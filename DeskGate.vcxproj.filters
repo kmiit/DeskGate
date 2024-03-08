@@ -4,7 +4,7 @@
     <ApplicationDefinition Include="App.xaml" />
   </ItemGroup>
   <ItemGroup>
-    <Midl Include="MainWindow.idl" />
+    <Midl Include="Pages\MainWindow.idl" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
@@ -66,24 +66,24 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <Page Include="MainWindow.xaml">
+    <Page Include="Pages\MainWindow.xaml">
       <Filter>Pages</Filter>
     </Page>
-    <Page Include="AdvancedPage.xaml">
+    <Page Include="Pages\AdvancedPage.xaml">
       <Filter>Pages</Filter>
     </Page>
-    <Page Include="AboutPage.xaml">
+    <Page Include="Pages\AboutPage.xaml">
       <Filter>Pages</Filter>
     </Page>
-    <Page Include="BasicPage.xaml">
+    <Page Include="Pages\BasicPage.xaml">
       <Filter>Pages</Filter>
     </Page>
   </ItemGroup>
   <ItemGroup>
-    <PRIResource Include="Resources.resw">
+    <PRIResource Include="Strings\zh-cn\Resources.resw">
       <Filter>Strings\zh-cn</Filter>
     </PRIResource>
-    <PRIResource Include="Resources1.resw">
+    <PRIResource Include="Strings\en-us\Resources.resw">
       <Filter>Strings\en-us</Filter>
     </PRIResource>
   </ItemGroup>

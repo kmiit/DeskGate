@@ -107,50 +107,50 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AboutPage.xaml.h">
-      <DependentUpon>AboutPage.xaml</DependentUpon>
+    <ClInclude Include="Pages\AboutPage.xaml.h">
+      <DependentUpon>Pages\AboutPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClInclude>
-    <ClInclude Include="AdvancedPage.xaml.h">
-      <DependentUpon>AdvancedPage.xaml</DependentUpon>
+    <ClInclude Include="Pages\AdvancedPage.xaml.h">
+      <DependentUpon>Pages\AdvancedPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClInclude>
-    <ClInclude Include="BasicPage.xaml.h">
-      <DependentUpon>BasicPage.xaml</DependentUpon>
+    <ClInclude Include="Pages\BasicPage.xaml.h">
+      <DependentUpon>Pages\BasicPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClInclude>
     <ClInclude Include="pch.h" />
     <ClInclude Include="App.xaml.h">
       <DependentUpon>App.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="MainWindow.xaml.h">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
+    <ClInclude Include="Pages\MainWindow.xaml.h">
+      <DependentUpon>Pages\MainWindow.xaml</DependentUpon>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
-    <Page Include="AboutPage.xaml">
+    <Page Include="Pages\AboutPage.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="AdvancedPage.xaml">
+    <Page Include="Pages\AdvancedPage.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="BasicPage.xaml">
+    <Page Include="Pages\BasicPage.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="MainWindow.xaml" />
+    <Page Include="Pages\MainWindow.xaml" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AboutPage.xaml.cpp">
-      <DependentUpon>AboutPage.xaml</DependentUpon>
+    <ClCompile Include="Pages\AboutPage.xaml.cpp">
+      <DependentUpon>Pages\AboutPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
-    <ClCompile Include="AdvancedPage.xaml.cpp">
-      <DependentUpon>AdvancedPage.xaml</DependentUpon>
+    <ClCompile Include="Pages\AdvancedPage.xaml.cpp">
+      <DependentUpon>Pages\AdvancedPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
-    <ClCompile Include="BasicPage.xaml.cpp">
-      <DependentUpon>BasicPage.xaml</DependentUpon>
+    <ClCompile Include="Pages\BasicPage.xaml.cpp">
+      <DependentUpon>Pages\BasicPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
     <ClCompile Include="pch.cpp">
@@ -159,27 +159,27 @@
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>
     </ClCompile>
-    <ClCompile Include="MainWindow.xaml.cpp">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
+    <ClCompile Include="Pages\MainWindow.xaml.cpp">
+      <DependentUpon>Pages\MainWindow.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <Midl Include="AboutPage.idl">
-      <DependentUpon>AboutPage.xaml</DependentUpon>
+    <Midl Include="Pages\AboutPage.idl">
+      <DependentUpon>Pages\AboutPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Midl>
-    <Midl Include="AdvancedPage.idl">
-      <DependentUpon>AdvancedPage.xaml</DependentUpon>
+    <Midl Include="Pages\AdvancedPage.idl">
+      <DependentUpon>Pages\AdvancedPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Midl>
-    <Midl Include="BasicPage.idl">
-      <DependentUpon>BasicPage.xaml</DependentUpon>
+    <Midl Include="Pages\BasicPage.idl">
+      <DependentUpon>Pages\BasicPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Midl>
-    <Midl Include="MainWindow.idl">
+    <Midl Include="Pages\MainWindow.idl">
       <SubType>Code</SubType>
-      <DependentUpon>MainWindow.xaml</DependentUpon>
+      <DependentUpon>Pages\MainWindow.xaml</DependentUpon>
     </Midl>
   </ItemGroup>
   <ItemGroup>
@@ -208,8 +208,8 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <PRIResource Include="Resources.resw" />
-    <PRIResource Include="Resources1.resw" />
+    <PRIResource Include="Strings\zh-cn\Resources.resw" />
+    <PRIResource Include="Strings\en-us\Resources.resw" />
   </ItemGroup>
   <!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
