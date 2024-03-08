@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="DeskGate.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:DeskGate"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    x:Uid="MainWindow"
+    Title="DeskGate">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" x:Name="MyTitleBar" Background="AliceBlue" x:FieldModifier="public" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="100"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock 
+                Text="Custom titlebar with interactive content" 
+                Style="{StaticResource CaptionTextBlockStyle}" 
+                Margin="44,8,0,0"/>
+        </Grid>
+
+        <NavigationView Grid.Row="1"
+                        SelectionChanged="NavigationView_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Tag="basic"  x:Uid="Basic" IsSelected="True"/>
+                <NavigationViewItem Tag="advanced" x:Uid="Advanced"/>
+                <NavigationViewItem Tag="about" x:Uid="About"/>
+            </NavigationView.MenuItems>
+            <ScrollViewer>
+                <Frame x:Name="ContentFrame" />
+            </ScrollViewer>
+        </NavigationView>
+
+    </Grid>
+</Window>

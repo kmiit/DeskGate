@@ -1,0 +1,9 @@
+namespace DeskGate
+{
+    [default_interface]
+    runtimeclass AdvancedPage : Microsoft.UI.Xaml.Controls.Page
+    {
+        AdvancedPage();
+        Int32 MyProperty;
+    }
+}

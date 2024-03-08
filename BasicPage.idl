@@ -1,0 +1,8 @@
+namespace DeskGate
+{
+    [default_interface]
+    runtimeclass BasicPage : Microsoft.UI.Xaml.Controls.Page
+    {
+        BasicPage();
+    }
+}
