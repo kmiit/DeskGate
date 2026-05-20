@@ -1,0 +1,10 @@
+[package]
+name = "DeskGate"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+dg-win32 = { workspace = true }
+
+[build-dependencies]
+embed-manifest = "1.4"
