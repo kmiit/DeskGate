@@ -110,6 +110,11 @@ pub struct AppSettings {
     /// Template applied to fences created from the tray menu.
     #[serde(default)]
     pub fence_defaults: FenceDefaults,
+
+    /// UI language override (`"en"`, `"zh"`). `None` = auto-detect from
+    /// the Windows display language.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 fn default_anim_fps() -> i32 {
@@ -121,6 +126,7 @@ impl Default for AppSettings {
         Self {
             anim_fps: default_anim_fps(),
             fence_defaults: FenceDefaults::default(),
+            language: None,
         }
     }
 }

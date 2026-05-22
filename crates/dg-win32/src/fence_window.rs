@@ -1,4 +1,5 @@
 use dg_core::fence::{Fence, FenceItem};
+use dg_locales as loc;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::*;
@@ -100,15 +101,23 @@ const ID_FENCE_BLUR_RADIUS: usize = 2005;
 // Global animation FPS presets. ID base is consumed by tray.rs (the
 // menu now lives in the tray, not per-fence). Kept here because the
 // preset list and the labels are shared visual constants.
-pub const ANIM_FPS_PRESETS: &[(i32, &windows::core::PCWSTR)] = &[
-    (0, &w!("Off (snap)")),
-    (30, &w!("30 FPS")),
-    (60, &w!("60 FPS (default)")),
-    (90, &w!("90 FPS")),
-    (120, &w!("120 FPS")),
-    (144, &w!("144 FPS")),
-    (240, &w!("240 FPS")),
-];
+pub const ANIM_FPS_PRESETS: &[i32] = &[0, 30, 60, 90, 120, 144, 240];
+
+/// Localized label for an FPS preset value.
+pub fn fps_label(fps: i32) -> &'static str {
+    match fps {
+        0 => loc::t(loc::FPS_OFF),
+        60 => loc::t(loc::FPS_DEFAULT),
+        _ => match fps {
+            30 => "30 FPS",
+            90 => "90 FPS",
+            120 => "120 FPS",
+            144 => "144 FPS",
+            240 => "240 FPS",
+            _ => "FPS",
+        },
+    }
+}
 
 pub fn register_class() -> windows::core::Result<()> {
     let wc = WNDCLASSW {
@@ -984,15 +993,15 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
         };
 
         if let Some(_idx) = item_idx {
-            let _ = AppendMenuW(menu, MF_STRING, ID_ITEM_OPEN, w!("Open"));
+            let _ = AppendMenuW(menu, MF_STRING, ID_ITEM_OPEN, loc::tw!(loc::FENCE_OPEN));
             let _ = AppendMenuW(
                 menu,
                 MF_STRING,
                 ID_ITEM_OPEN_LOCATION,
-                w!("Open file location"),
+                loc::tw!(loc::FENCE_OPEN_LOCATION),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, ID_ITEM_REMOVE, w!("Remove from fence"));
+            let _ = AppendMenuW(menu, MF_STRING, ID_ITEM_REMOVE, loc::tw!(loc::FENCE_REMOVE));
         } else {
             let fd = crate::app::with_state(|s| {
                 s.fences
@@ -1001,25 +1010,40 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                     .map(|fw| fw.fence_data.clone())
             })
             .flatten();
-            let roll_label = match fd.as_ref().map(|f| f.is_rolled == "true") {
-                Some(true) => w!("Unroll"),
-                _ => w!("Roll up"),
+            let roll_key = match fd.as_ref().map(|f| f.is_rolled == "true") {
+                Some(true) => loc::FENCE_UNROLL,
+                _ => loc::FENCE_ROLL_UP,
             };
-            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_ROLL, roll_label);
-            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_RENAME, w!("Rename..."));
-            let lock_label = match fd.as_ref().map(|f| f.is_locked == "true") {
-                Some(true) => w!("Unlock"),
-                _ => w!("Lock"),
+            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_ROLL, loc::tw!(roll_key));
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_FENCE_RENAME,
+                loc::tw!(loc::FENCE_RENAME),
+            );
+            let lock_key = match fd.as_ref().map(|f| f.is_locked == "true") {
+                Some(true) => loc::FENCE_UNLOCK,
+                _ => loc::FENCE_LOCK,
             };
-            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_LOCK_TOGGLE, lock_label);
+            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_LOCK_TOGGLE, loc::tw!(lock_key));
 
             if let Some(f) = fd.as_ref() {
                 let customize = build_customize_menu(f);
-                let _ = AppendMenuW(menu, MF_POPUP, customize.0 as usize, w!("Customize"));
+                let _ = AppendMenuW(
+                    menu,
+                    MF_POPUP,
+                    customize.0 as usize,
+                    loc::tw!(loc::FENCE_CUSTOMIZE),
+                );
             }
 
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_DELETE, w!("Delete fence"));
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_FENCE_DELETE,
+                loc::tw!(loc::FENCE_DELETE),
+            );
         }
 
         let id = TrackPopupMenu(
@@ -1118,16 +1142,16 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
             .flatten()
             .unwrap_or_default();
             let instruction = if title.is_empty() {
-                "Delete this fence?".to_string()
+                loc::t(loc::DELETE_TITLE).to_string()
             } else {
-                format!("Delete the fence \u{201C}{}\u{201D}?", title)
+                loc::t_named(loc::DELETE_TITLE_NAMED, &title)
             };
             let result = crate::modal::confirm_destructive(
                 hwnd,
                 "DeskGate",
                 &instruction,
-                "Its contents are shortcuts only — the original files stay where they are. This cannot be undone from inside the app.",
-                "Delete fence",
+                loc::t(loc::DELETE_DETAILS),
+                loc::t(loc::DELETE_CONFIRM),
             );
             if result == crate::modal::ConfirmResult::Confirmed {
                 crate::app::with_state_mut(|s| {
@@ -1152,7 +1176,8 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                 .unwrap_or(20.0)
             };
             let initial = format!("{}", current.round() as i32);
-            if let Some(input) = crate::modal::input(hwnd, "Blur radius (0-150)", &initial) {
+            if let Some(input) = crate::modal::input(hwnd, loc::t(loc::FENCE_BLUR_PROMPT), &initial)
+            {
                 let trimmed = input.trim();
                 if let Ok(parsed) = trimmed.parse::<f64>() {
                     let radius = parsed.clamp(0.0, 150.0);
@@ -1340,7 +1365,8 @@ fn rename_fence_via_modal(hwnd: HWND) {
         .flatten()
         .unwrap_or_default()
     };
-    let Some(new_title) = crate::modal::input(hwnd, "Rename fence", &current) else {
+    let Some(new_title) = crate::modal::input(hwnd, loc::t(loc::FENCE_RENAME_PROMPT), &current)
+    else {
         return;
     };
     unsafe {

@@ -16,6 +16,7 @@
 
 use dg_core::config::FenceDefaults;
 use dg_core::fence::Fence;
+use dg_locales as loc;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
@@ -47,57 +48,84 @@ pub fn decode(id_base: usize, encoded: usize) -> (usize, usize) {
     (code / KIND_STRIDE, code % KIND_STRIDE)
 }
 
-pub const NAMED_COLORS: &[(&str, &PCWSTR)] = &[
-    ("", &w!("(default)")),
-    ("Red", &w!("Red")),
-    ("Green", &w!("Green")),
-    ("Blue", &w!("Blue")),
-    ("Teal", &w!("Teal")),
-    ("Purple", &w!("Purple")),
-    ("Orange", &w!("Orange")),
-    ("Pink", &w!("Pink")),
-    ("Yellow", &w!("Yellow")),
-    ("Gray", &w!("Gray")),
-    ("Black", &w!("Black")),
-    ("White", &w!("White")),
+pub const NAMED_COLORS: &[(&str, &str)] = &[
+    ("", "color.default"),
+    ("Red", "color.red"),
+    ("Green", "color.green"),
+    ("Blue", "color.blue"),
+    ("Teal", "color.teal"),
+    ("Purple", "color.purple"),
+    ("Orange", "color.orange"),
+    ("Pink", "color.pink"),
+    ("Yellow", "color.yellow"),
+    ("Gray", "color.gray"),
+    ("Black", "color.black"),
+    ("White", "color.white"),
 ];
 
-pub const BORDER_THICKNESSES: &[(i32, &PCWSTR)] = &[
-    (0, &w!("0 px")),
-    (1, &w!("1 px")),
-    (2, &w!("2 px")),
-    (3, &w!("3 px")),
-    (4, &w!("4 px")),
-    (6, &w!("6 px")),
+pub const BORDER_THICKNESSES: &[(i32, &str)] = &[
+    (0, "0 px"),
+    (1, "1 px"),
+    (2, "2 px"),
+    (3, "3 px"),
+    (4, "4 px"),
+    (6, "6 px"),
 ];
 
-pub const ICON_SIZES: &[(&str, &PCWSTR)] = &[
-    ("Tiny", &w!("Tiny (16)")),
-    ("Small", &w!("Small (24)")),
-    ("Medium", &w!("Medium (32)")),
-    ("Large", &w!("Large (48)")),
-    ("Huge", &w!("Huge (64)")),
+pub const ICON_SIZES: &[(&str, &str)] = &[
+    ("Tiny", "size.tiny"),
+    ("Small", "size.small"),
+    ("Medium", "size.medium"),
+    ("Large", "size.large"),
+    ("Huge", "size.huge"),
 ];
 
-pub const ICON_SPACINGS: &[(i32, &PCWSTR)] = &[
-    (0, &w!("0 px")),
-    (3, &w!("3 px")),
-    (5, &w!("5 px")),
-    (8, &w!("8 px")),
-    (12, &w!("12 px")),
-    (16, &w!("16 px")),
+pub const ICON_SPACINGS: &[(i32, &str)] = &[
+    (0, "0 px"),
+    (3, "3 px"),
+    (5, "5 px"),
+    (8, "8 px"),
+    (12, "12 px"),
+    (16, "16 px"),
 ];
 
-// Background opacity presets (value, label). Stored on the fence as bg_opacity.
-pub const BG_OPACITIES: &[(f64, &PCWSTR)] = &[
-    (0.00, &w!("0% (transparent)")),
-    (0.15, &w!("15%")),
-    (0.30, &w!("30%")),
-    (0.45, &w!("45% (default)")),
-    (0.60, &w!("60%")),
-    (0.80, &w!("80%")),
-    (1.00, &w!("100% (solid)")),
+pub const BG_OPACITIES: &[(f64, &str)] = &[
+    (0.00, "opacity.transparent"),
+    (0.15, "15%"),
+    (0.30, "30%"),
+    (0.45, "opacity.default"),
+    (0.60, "60%"),
+    (0.80, "80%"),
+    (1.00, "opacity.solid"),
 ];
+
+/// Resolve a label string — if it matches a known locale key, translate it;
+/// otherwise return it as-is (for literal labels like "15%").
+fn resolve_label(label: &'static str) -> &'static str {
+    match label {
+        "color.default" => loc::t(loc::COLOR_DEFAULT),
+        "color.red" => loc::t(loc::COLOR_RED),
+        "color.green" => loc::t(loc::COLOR_GREEN),
+        "color.blue" => loc::t(loc::COLOR_BLUE),
+        "color.teal" => loc::t(loc::COLOR_TEAL),
+        "color.purple" => loc::t(loc::COLOR_PURPLE),
+        "color.orange" => loc::t(loc::COLOR_ORANGE),
+        "color.pink" => loc::t(loc::COLOR_PINK),
+        "color.yellow" => loc::t(loc::COLOR_YELLOW),
+        "color.gray" => loc::t(loc::COLOR_GRAY),
+        "color.black" => loc::t(loc::COLOR_BLACK),
+        "color.white" => loc::t(loc::COLOR_WHITE),
+        "size.tiny" => loc::t(loc::SIZE_TINY),
+        "size.small" => loc::t(loc::SIZE_SMALL),
+        "size.medium" => loc::t(loc::SIZE_MEDIUM),
+        "size.large" => loc::t(loc::SIZE_LARGE),
+        "size.huge" => loc::t(loc::SIZE_HUGE),
+        "opacity.transparent" => loc::t(loc::OPACITY_TRANSPARENT),
+        "opacity.default" => loc::t(loc::OPACITY_DEFAULT),
+        "opacity.solid" => loc::t(loc::OPACITY_SOLID),
+        other => other,
+    }
+}
 
 /// Minimal read-only view of either a per-fence `Fence` or the global
 /// `FenceDefaults`. Constructed cheaply at menu-build time; the borrow
@@ -171,28 +199,28 @@ pub fn build_customize_menu(
             id_base,
             KIND_BG_COLOR,
             view.bg_color,
-            w!("Background color"),
+            loc::tw!(loc::CUSTOMIZE_BG_COLOR),
         );
         append_str_color_submenu(
             menu,
             id_base,
             KIND_BORDER_COLOR,
             view.border_color,
-            w!("Border color"),
+            loc::tw!(loc::CUSTOMIZE_BORDER_COLOR),
         );
         append_str_color_submenu(
             menu,
             id_base,
             KIND_TITLE_COLOR,
             view.title_color,
-            w!("Title color"),
+            loc::tw!(loc::CUSTOMIZE_TITLE_COLOR),
         );
         append_str_color_submenu(
             menu,
             id_base,
             KIND_TEXT_COLOR,
             view.text_color,
-            w!("Label color"),
+            loc::tw!(loc::CUSTOMIZE_LABEL_COLOR),
         );
 
         append_int_submenu(
@@ -201,7 +229,7 @@ pub fn build_customize_menu(
             KIND_BORDER_THICK,
             BORDER_THICKNESSES,
             view.border_thick,
-            w!("Border thickness"),
+            loc::tw!(loc::CUSTOMIZE_BORDER_THICK),
         );
         append_str_submenu(
             menu,
@@ -209,7 +237,7 @@ pub fn build_customize_menu(
             KIND_ICON_SIZE,
             ICON_SIZES,
             view.icon_size,
-            w!("Icon size"),
+            loc::tw!(loc::CUSTOMIZE_ICON_SIZE),
         );
         append_int_submenu(
             menu,
@@ -217,29 +245,34 @@ pub fn build_customize_menu(
             KIND_ICON_SPACING,
             ICON_SPACINGS,
             view.icon_spacing,
-            w!("Icon spacing"),
+            loc::tw!(loc::CUSTOMIZE_ICON_SPACING),
         );
 
         append_toggle(
             menu,
             encode(id_base, KIND_BOLD_TOGGLE, 0),
             view.bold,
-            w!("Bold title"),
+            loc::tw!(loc::CUSTOMIZE_BOLD_TITLE),
         );
         append_toggle(
             menu,
             encode(id_base, KIND_LABELS_TOGGLE, 0),
             view.labels,
-            w!("Show item labels"),
+            loc::tw!(loc::CUSTOMIZE_SHOW_LABELS),
         );
         append_toggle(
             menu,
             encode(id_base, KIND_BLUR_TOGGLE, 0),
             view.blur_enabled,
-            w!("Background blur"),
+            loc::tw!(loc::CUSTOMIZE_BG_BLUR),
         );
 
-        let _ = AppendMenuW(menu, MF_STRING, blur_radius_prompt_id, w!("Blur radius..."));
+        let _ = AppendMenuW(
+            menu,
+            MF_STRING,
+            blur_radius_prompt_id,
+            loc::tw!(loc::CUSTOMIZE_BLUR_RADIUS),
+        );
 
         append_opacity_submenu(menu, id_base, view.bg_opacity);
 
@@ -262,7 +295,8 @@ unsafe fn append_str_color_submenu(
         } else {
             MF_STRING
         };
-        let _ = unsafe { AppendMenuW(sub, flags, id, **item_label) };
+        let w = loc::tw(resolve_label(item_label));
+        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
     }
     let _ = unsafe { AppendMenuW(parent, MF_POPUP, sub.0 as usize, label) };
 }
@@ -271,7 +305,7 @@ unsafe fn append_int_submenu(
     parent: HMENU,
     id_base: usize,
     kind: usize,
-    choices: &[(i32, &PCWSTR)],
+    choices: &[(i32, &'static str)],
     current: i32,
     label: PCWSTR,
 ) {
@@ -283,7 +317,8 @@ unsafe fn append_int_submenu(
         } else {
             MF_STRING
         };
-        let _ = unsafe { AppendMenuW(sub, flags, id, **item_label) };
+        let w = loc::tw(resolve_label(item_label));
+        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
     }
     let _ = unsafe { AppendMenuW(parent, MF_POPUP, sub.0 as usize, label) };
 }
@@ -292,7 +327,7 @@ unsafe fn append_str_submenu(
     parent: HMENU,
     id_base: usize,
     kind: usize,
-    choices: &[(&str, &PCWSTR)],
+    choices: &[(&'static str, &'static str)],
     current: &str,
     label: PCWSTR,
 ) {
@@ -304,7 +339,8 @@ unsafe fn append_str_submenu(
         } else {
             MF_STRING
         };
-        let _ = unsafe { AppendMenuW(sub, flags, id, **item_label) };
+        let w = loc::tw(resolve_label(item_label));
+        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
     }
     let _ = unsafe { AppendMenuW(parent, MF_POPUP, sub.0 as usize, label) };
 }
@@ -318,9 +354,17 @@ unsafe fn append_opacity_submenu(parent: HMENU, id_base: usize, current: f64) {
         } else {
             MF_STRING
         };
-        let _ = unsafe { AppendMenuW(sub, flags, id, **item_label) };
+        let w = loc::tw(resolve_label(item_label));
+        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
     }
-    let _ = unsafe { AppendMenuW(parent, MF_POPUP, sub.0 as usize, w!("Background opacity")) };
+    let _ = unsafe {
+        AppendMenuW(
+            parent,
+            MF_POPUP,
+            sub.0 as usize,
+            loc::tw!(loc::CUSTOMIZE_BG_OPACITY),
+        )
+    };
 }
 
 unsafe fn append_toggle(parent: HMENU, id: usize, on: bool, label: PCWSTR) {

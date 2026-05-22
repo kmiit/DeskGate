@@ -1,4 +1,5 @@
 use dg_core::config::AppConfig;
+use windows::Win32::Globalization::GetUserDefaultUILanguage;
 use windows::Win32::System::Ole::*;
 use windows::Win32::System::Threading::*;
 use windows::Win32::UI::HiDpi::*;
@@ -20,6 +21,8 @@ pub const ID_TRAY_DEFAULTS_BLUR_RADIUS: usize = 1199;
 // + value. Same `kind` numbering as fence_window's KIND_* constants so
 // the same NAMED_COLORS / BORDER_THICKNESSES tables can be reused.
 pub const ID_TRAY_DEFAULTS_BASE: usize = 1200;
+// Language submenu: one item per supported language.
+pub const ID_TRAY_LANG_BASE: usize = 1300;
 
 // SAFETY: Single-threaded app, all access from the message pump thread.
 static mut APP_STATE: Option<AppState> = None;
@@ -70,6 +73,20 @@ pub fn run() -> Box<dyn std::error::Error> {
         Ok(c) => c,
         Err(e) => return e,
     };
+
+    // Initialize locale
+    let lang = config.settings.language.clone().unwrap_or_else(|| {
+        let lang_id = unsafe { GetUserDefaultUILanguage() };
+        let primary = lang_id & 0x3FF;
+        let sub = (lang_id >> 10) & 0x3F;
+        match (primary, sub) {
+            (0x04, 0x02) => "zh_CN", // SUBLANG_CHINESE_SIMPLIFIED
+            (0x04, _) => "zh_TW",    // SUBLANG_CHINESE_TRADITIONAL & others
+            _ => "en",
+        }
+        .to_string()
+    });
+    dg_locales::init(&lang);
     #[cfg(debug_assertions)]
     eprintln!(
         "[dg] profile_dir={} fences={}",

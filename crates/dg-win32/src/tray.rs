@@ -1,4 +1,5 @@
 use dg_core::config::FenceDefaults;
+use dg_locales as loc;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::LibraryLoader::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
@@ -103,8 +104,13 @@ impl TrayIcon {
                 Ok(m) => m,
                 Err(_) => return,
             };
-            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_NEW_FENCE, w!("New Fence"));
-            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_RELOAD, w!("Reload All"));
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_TRAY_NEW_FENCE,
+                loc::tw!(loc::TRAY_NEW_FENCE),
+            );
+            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_RELOAD, loc::tw!(loc::TRAY_RELOAD));
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
 
             // Read settings once, build submenus from a stable snapshot.
@@ -119,18 +125,31 @@ impl TrayIcon {
             .unwrap_or((60, FenceDefaults::default()));
 
             let fps_menu = build_anim_fps_menu(anim_fps);
-            let _ = AppendMenuW(menu, MF_POPUP, fps_menu.0 as usize, w!("Animation FPS"));
+            let _ = AppendMenuW(
+                menu,
+                MF_POPUP,
+                fps_menu.0 as usize,
+                loc::tw!(loc::TRAY_ANIM_FPS),
+            );
 
             let defaults_menu = build_defaults_menu(&defaults);
             let _ = AppendMenuW(
                 menu,
                 MF_POPUP,
                 defaults_menu.0 as usize,
-                w!("Default fence settings"),
+                loc::tw!(loc::TRAY_DEFAULT_SETTINGS),
+            );
+
+            let lang_menu = build_lang_menu();
+            let _ = AppendMenuW(
+                menu,
+                MF_POPUP,
+                lang_menu.0 as usize,
+                loc::tw!(loc::LANG_LABEL),
             );
 
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_EXIT, w!("Exit"));
+            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_EXIT, loc::tw!(loc::TRAY_EXIT));
 
             let _ = TrackPopupMenu(
                 menu,
@@ -161,14 +180,15 @@ impl Drop for TrayIcon {
 fn build_anim_fps_menu(current_fps: i32) -> HMENU {
     unsafe {
         let menu = CreatePopupMenu().unwrap_or_default();
-        for (i, (val, label)) in ANIM_FPS_PRESETS.iter().enumerate() {
+        for (i, val) in ANIM_FPS_PRESETS.iter().enumerate() {
             let id = ID_TRAY_ANIM_FPS_BASE + i;
             let flags = if *val == current_fps {
                 MF_STRING | MF_CHECKED
             } else {
                 MF_STRING
             };
-            let _ = AppendMenuW(menu, flags, id, **label);
+            let w = loc::tw(crate::fence_window::fps_label(*val));
+            let _ = AppendMenuW(menu, flags, id, PCWSTR(w.as_ptr()));
         }
         menu
     }
@@ -180,6 +200,25 @@ fn build_anim_fps_menu(current_fps: i32) -> HMENU {
 fn build_defaults_menu(d: &FenceDefaults) -> HMENU {
     let view = customize::CustomizeView::from(d);
     customize::build_customize_menu(&view, ID_TRAY_DEFAULTS_BASE, ID_TRAY_DEFAULTS_BLUR_RADIUS)
+}
+
+/// Build the language submenu with a check mark on the current language.
+fn build_lang_menu() -> HMENU {
+    unsafe {
+        let menu = CreatePopupMenu().unwrap_or_default();
+        let current = loc::lang();
+        for (i, (code, label_key)) in loc::languages().iter().enumerate() {
+            let id = ID_TRAY_LANG_BASE + i;
+            let flags = if *code == current {
+                MF_STRING | MF_CHECKED
+            } else {
+                MF_STRING
+            };
+            let w = loc::tw(label_key);
+            let _ = AppendMenuW(menu, flags, id, PCWSTR(w.as_ptr()));
+        }
+        menu
+    }
 }
 
 /// Apply a click in the "Default fence settings" submenu, decoded as
@@ -253,7 +292,7 @@ fn new_fence_from_defaults() -> dg_core::fence::Fence {
     };
     dg_core::fence::Fence {
         id: uuid::Uuid::new_v4().to_string(),
-        title: "New Fence - Drop your shortcuts here".into(),
+        title: loc::t(loc::NEW_FENCE_TITLE).to_string(),
         x: 100.0,
         y: 100.0,
         width: d.width,
@@ -373,7 +412,7 @@ unsafe extern "system" fn tray_wndproc(
                     };
                     let initial = format!("{}", current.round() as i32);
                     if let Some(input) =
-                        crate::modal::input(hwnd, "Default blur radius (0-150)", &initial)
+                        crate::modal::input(hwnd, loc::t(loc::TRAY_DEFAULT_BLUR_PROMPT), &initial)
                         && let Ok(parsed) = input.trim().parse::<f64>()
                     {
                         let radius = parsed.clamp(0.0, 150.0);
@@ -389,7 +428,7 @@ unsafe extern "system" fn tray_wndproc(
                     && n < ID_TRAY_ANIM_FPS_BASE + ANIM_FPS_PRESETS.len() =>
                 {
                     let idx = n - ID_TRAY_ANIM_FPS_BASE;
-                    let new_fps = ANIM_FPS_PRESETS[idx].0;
+                    let new_fps = ANIM_FPS_PRESETS[idx];
                     unsafe {
                         crate::app::with_state_mut(|s| {
                             s.config.settings.anim_fps = new_fps;
@@ -401,6 +440,17 @@ unsafe extern "system" fn tray_wndproc(
                     .contains(&n) =>
                 {
                     apply_defaults(n - ID_TRAY_DEFAULTS_BASE);
+                }
+                n if n >= ID_TRAY_LANG_BASE && n < ID_TRAY_LANG_BASE + loc::languages().len() => {
+                    let idx = n - ID_TRAY_LANG_BASE;
+                    let code = loc::languages()[idx].0;
+                    loc::init(code);
+                    unsafe {
+                        crate::app::with_state_mut(|s| {
+                            s.config.settings.language = Some(code.to_string());
+                            let _ = s.config.save_settings();
+                        });
+                    }
                 }
                 _ => {}
             }

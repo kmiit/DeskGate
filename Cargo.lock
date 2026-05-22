@@ -44,10 +44,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dg-locales"
+version = "0.1.0"
+
+[[package]]
 name = "dg-win32"
 version = "0.1.0"
 dependencies = [
  "dg-core",
+ "dg-locales",
  "uuid",
  "windows",
  "windows-core",

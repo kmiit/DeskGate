@@ -23,6 +23,7 @@
 mod render;
 mod run;
 
+use dg_locales as loc;
 use windows::Win32::Foundation::HWND;
 
 // Layout constants in DIPs. Shared between hit-testing (run) and drawing
@@ -71,14 +72,14 @@ pub fn input(owner: HWND, title: &str, default: &str) -> Option<String> {
         edit_default: Some(default.to_string()),
         buttons: vec![
             ButtonSpec {
-                label: "Cancel".into(),
+                label: loc::t(loc::MODAL_CANCEL).to_string(),
                 result: RESULT_CANCEL,
                 default: false,
                 cancel: true,
                 destructive: false,
             },
             ButtonSpec {
-                label: "OK".into(),
+                label: loc::t(loc::MODAL_OK).to_string(),
                 result: RESULT_OK,
                 default: true,
                 cancel: false,
@@ -110,7 +111,7 @@ pub fn confirm_destructive(
         edit_default: None,
         buttons: vec![
             ButtonSpec {
-                label: "Cancel".into(),
+                label: loc::t(loc::MODAL_CANCEL).to_string(),
                 result: RESULT_CANCEL,
                 default: false,
                 cancel: true,

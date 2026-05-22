@@ -8,6 +8,7 @@ edition = "2024"
 
 [workspace.dependencies]
 dg-core = { path = "crates/dg-core" }
+dg-locales = { path = "crates/dg-locales" }
 dg-win32 = { path = "crates/dg-win32" }
 
 serde = { version = "1", features = ["derive"] }
