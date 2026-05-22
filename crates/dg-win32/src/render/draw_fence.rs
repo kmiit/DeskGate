@@ -61,6 +61,14 @@ pub fn draw_fence(
         _ => 13.0,
     };
     let title_format = ctx.get_text_format(title_font_size, fence.bold_title_text == "true")?;
+    let title_align = match fence.title_text_align.as_str() {
+        "Left" => DWRITE_TEXT_ALIGNMENT_LEADING,
+        "Right" => DWRITE_TEXT_ALIGNMENT_TRAILING,
+        _ => DWRITE_TEXT_ALIGNMENT_CENTER,
+    };
+    unsafe {
+        title_format.SetTextAlignment(title_align)?;
+    }
     let label_format = ctx.get_text_format(10.0, false)?;
     // Center-align icon labels under their icons. The cached format is also
     // used elsewhere, so set alignment on a fresh derived format each draw —

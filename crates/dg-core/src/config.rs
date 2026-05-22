@@ -39,6 +39,12 @@ pub struct FenceDefaults {
     pub icon_spacing: i32,
     #[serde(default = "default_def_true")]
     pub show_item_labels: String,
+    #[serde(default = "default_def_title_align")]
+    pub title_text_align: String,
+}
+
+fn default_def_title_align() -> String {
+    "Center".into()
 }
 
 fn default_def_width() -> f64 {
@@ -90,6 +96,7 @@ impl Default for FenceDefaults {
             icon_size: default_def_icon_size(),
             icon_spacing: default_def_icon_spacing(),
             show_item_labels: default_def_true(),
+            title_text_align: default_def_title_align(),
         }
     }
 }

@@ -34,7 +34,8 @@ pub const KIND_BOLD_TOGGLE: usize = 7;
 pub const KIND_BLUR_TOGGLE: usize = 8;
 pub const KIND_BG_OPACITY: usize = 9;
 pub const KIND_LABELS_TOGGLE: usize = 10;
-pub const KIND_COUNT: usize = 11;
+pub const KIND_TITLE_ALIGN: usize = 11;
+pub const KIND_COUNT: usize = 12;
 pub const KIND_STRIDE: usize = 64;
 
 #[inline]
@@ -89,6 +90,12 @@ pub const ICON_SPACINGS: &[(i32, &str)] = &[
     (16, "16 px"),
 ];
 
+pub const TITLE_ALIGNS: &[(&str, &str)] = &[
+    ("Left", "align.left"),
+    ("Center", "align.center"),
+    ("Right", "align.right"),
+];
+
 pub const BG_OPACITIES: &[(f64, &str)] = &[
     (0.00, "opacity.transparent"),
     (0.15, "15%"),
@@ -123,6 +130,9 @@ fn resolve_label(label: &'static str) -> &'static str {
         "opacity.transparent" => loc::t(loc::OPACITY_TRANSPARENT),
         "opacity.default" => loc::t(loc::OPACITY_DEFAULT),
         "opacity.solid" => loc::t(loc::OPACITY_SOLID),
+        "align.left" => loc::t(loc::ALIGN_LEFT),
+        "align.center" => loc::t(loc::ALIGN_CENTER),
+        "align.right" => loc::t(loc::ALIGN_RIGHT),
         other => other,
     }
 }
@@ -142,6 +152,7 @@ pub struct CustomizeView<'a> {
     pub blur_enabled: bool,
     pub bg_opacity: f64,
     pub labels: bool,
+    pub title_align: &'a str,
 }
 
 impl<'a> From<&'a Fence> for CustomizeView<'a> {
@@ -158,6 +169,7 @@ impl<'a> From<&'a Fence> for CustomizeView<'a> {
             blur_enabled: f.blur_enabled == "true",
             bg_opacity: f.bg_opacity,
             labels: f.show_item_labels == "true",
+            title_align: &f.title_text_align,
         }
     }
 }
@@ -176,6 +188,7 @@ impl<'a> From<&'a FenceDefaults> for CustomizeView<'a> {
             blur_enabled: d.blur_enabled == "true",
             bg_opacity: d.bg_opacity,
             labels: d.show_item_labels == "true",
+            title_align: &d.title_text_align,
         }
     }
 }
@@ -253,6 +266,14 @@ pub fn build_customize_menu(
             encode(id_base, KIND_BOLD_TOGGLE, 0),
             view.bold,
             loc::tw!(loc::CUSTOMIZE_BOLD_TITLE),
+        );
+        append_str_submenu(
+            menu,
+            id_base,
+            KIND_TITLE_ALIGN,
+            TITLE_ALIGNS,
+            view.title_align,
+            loc::tw!(loc::CUSTOMIZE_TITLE_ALIGN),
         );
         append_toggle(
             menu,
@@ -402,4 +423,8 @@ pub fn decoded_icon_spacing(value: usize) -> Option<i32> {
 
 pub fn decoded_opacity(value: usize) -> Option<f64> {
     BG_OPACITIES.get(value).map(|(v, _)| *v)
+}
+
+pub fn decoded_title_align(value: usize) -> Option<String> {
+    TITLE_ALIGNS.get(value).map(|(v, _)| v.to_string())
 }

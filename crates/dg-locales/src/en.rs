@@ -37,6 +37,10 @@ pub fn translate(key: &'static str) -> &'static str {
         CUSTOMIZE_BG_BLUR => "Background blur",
         CUSTOMIZE_BLUR_RADIUS => "Blur radius...",
         CUSTOMIZE_BG_OPACITY => "Background opacity",
+        CUSTOMIZE_TITLE_ALIGN => "Title alignment",
+        ALIGN_LEFT => "Left",
+        ALIGN_CENTER => "Center",
+        ALIGN_RIGHT => "Right",
 
         COLOR_DEFAULT => "(default)",
         COLOR_RED => "Red",

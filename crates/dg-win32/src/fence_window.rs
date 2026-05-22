@@ -46,19 +46,12 @@ fn title_h_px(hwnd: HWND) -> i32 {
 
 /// True when client x-coord `lx_px` falls on the painted title text
 /// (not the empty space to its right). Mirrors the geometry used in
-/// `draw_fence`: title is left-aligned at 10 DIPs from the left edge.
+/// `draw_fence`, accounting for the fence's title alignment.
 fn title_text_hit(hwnd: HWND, lx_px: i32) -> bool {
-    const TITLE_LEFT_DIP: f64 = 10.0;
-    // Generous trailing slop so a click landing just past the glyphs
-    // still counts as "on the text" — feels less finicky than a strict
-    // measure boundary.
-    const TRAILING_SLOP_DIP: f64 = 6.0;
+    const MARGIN_DIP: f64 = 10.0;
+    const SLOP_DIP: f64 = 6.0;
 
     let dpi = window_dpi(hwnd);
-    let left_px = dip_to_px(TITLE_LEFT_DIP, dpi);
-    if lx_px < left_px {
-        return false;
-    }
     unsafe {
         crate::app::with_state_mut(|s| {
             let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == hwnd) else {
@@ -71,9 +64,16 @@ fn title_text_hit(hwnd: HWND, lx_px: i32) -> bool {
                 "Large" => 15.0,
                 _ => 13.0,
             };
-            let text_w_dip = fw.d2d.measure_text_width(&title, size, bold).unwrap_or(0.0) as f64;
-            let right_px = dip_to_px(TITLE_LEFT_DIP + text_w_dip + TRAILING_SLOP_DIP, dpi);
-            lx_px < right_px
+            let text_w = fw.d2d.measure_text_width(&title, size, bold).unwrap_or(0.0) as f64;
+            let fence_w = fw.fence_data.width;
+            let (text_left, text_right) = match fw.fence_data.title_text_align.as_str() {
+                "Left" => (MARGIN_DIP, MARGIN_DIP + text_w),
+                "Right" => (fence_w - MARGIN_DIP - text_w, fence_w - MARGIN_DIP),
+                _ => ((fence_w - text_w) / 2.0, (fence_w + text_w) / 2.0),
+            };
+            let l_px = dip_to_px(text_left - SLOP_DIP, dpi);
+            let r_px = dip_to_px(text_right + SLOP_DIP, dpi);
+            lx_px >= l_px && lx_px < r_px
         })
         .unwrap_or(false)
     }
@@ -1273,6 +1273,12 @@ fn apply_customize(hwnd: HWND, code: usize) {
                 }
                 KIND_LABELS_TOGGLE => {
                     f.show_item_labels = toggle_bool_str(&f.show_item_labels);
+                }
+                KIND_TITLE_ALIGN => {
+                    let Some(v) = decoded_title_align(value) else {
+                        return;
+                    };
+                    f.title_text_align = v;
                 }
                 _ => {}
             }

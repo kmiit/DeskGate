@@ -103,6 +103,12 @@ pub const DELETE_CONFIRM: &str = "delete.confirm";
 // New fence default title
 pub const NEW_FENCE_TITLE: &str = "new_fence_title";
 
+// Title alignment
+pub const CUSTOMIZE_TITLE_ALIGN: &str = "customize.title_align";
+pub const ALIGN_LEFT: &str = "align.left";
+pub const ALIGN_CENTER: &str = "align.center";
+pub const ALIGN_RIGHT: &str = "align.right";
+
 // Language menu
 pub const LANG_LABEL: &str = "lang.label";
 pub const LANG_EN: &str = "lang.en";

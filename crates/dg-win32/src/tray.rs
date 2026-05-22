@@ -11,7 +11,7 @@ use crate::app::*;
 use crate::customize::{
     self, KIND_BG_COLOR, KIND_BG_OPACITY, KIND_BLUR_TOGGLE, KIND_BOLD_TOGGLE, KIND_BORDER_COLOR,
     KIND_BORDER_THICK, KIND_COUNT, KIND_ICON_SIZE, KIND_ICON_SPACING, KIND_LABELS_TOGGLE,
-    KIND_STRIDE, KIND_TEXT_COLOR, KIND_TITLE_COLOR,
+    KIND_STRIDE, KIND_TEXT_COLOR, KIND_TITLE_ALIGN, KIND_TITLE_COLOR,
 };
 use crate::fence_window::{ANIM_FPS_PRESETS, FenceWindow};
 
@@ -276,6 +276,12 @@ fn apply_defaults(code: usize) {
                 KIND_LABELS_TOGGLE => {
                     d.show_item_labels = crate::fence_window::toggle_bool_str(&d.show_item_labels);
                 }
+                KIND_TITLE_ALIGN => {
+                    let Some(v) = customize::decoded_title_align(value) else {
+                        return;
+                    };
+                    d.title_text_align = v;
+                }
                 _ => {}
             }
             let _ = s.config.save_settings();
@@ -326,6 +332,7 @@ fn new_fence_from_defaults() -> dg_core::fence::Fence {
         blur_radius: d.blur_radius,
         bg_opacity: d.bg_opacity,
         show_item_labels: d.show_item_labels.clone(),
+        title_text_align: d.title_text_align.clone(),
     }
 }
 

@@ -142,6 +142,13 @@ pub struct Fence {
 
     #[serde(default = "default_true", rename = "ShowItemLabels")]
     pub show_item_labels: String,
+
+    #[serde(default = "default_title_align", rename = "TitleTextAlign")]
+    pub title_text_align: String,
+}
+
+fn default_title_align() -> String {
+    "Center".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
