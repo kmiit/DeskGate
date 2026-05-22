@@ -28,7 +28,7 @@ Inspired by [DesktopFences](https://github.com/limbo666/DesktopFences).
 
 ## Install
 
-Download the latest `DeskGate.exe` from [Releases](https://github.com/kmiit/DeskGate/releases) and place it anywhere. The app creates a `Profiles/` directory alongside the exe on first run to store configuration.
+Download the latest `DeskGate.exe` from [Releases](https://github.com/kmiit/DeskGate/releases) and place it anywhere. Configuration is stored in `%APPDATA%/DeskGate`.
 
 ## Build from source
 
@@ -54,10 +54,9 @@ The binary will be at `target/release/DeskGate.exe`.
 
 | File | Purpose |
 |------|---------|
-| `Profiles/Default/fences.json` | Per-fence layout, items, and appearance |
-| `Profiles/Default/settings.json` | App-wide preferences — animation FPS, defaults for new fences |
+| `%APPDATA%/DeskGate/fences.json` | Per-fence layout, items, and appearance |
+| `%APPDATA%/DeskGate/settings.json` | App-wide preferences — animation FPS, defaults for new fences |
 
 Set `DESKGATE_PROFILE` to point at a custom profile directory. The app checks:
 1. `$DESKGATE_PROFILE`
-2. `./Profiles/Default` next to the exe
-3. `./Profiles/Default` in the current working directory
+2. `%APPDATA%/DeskGate`

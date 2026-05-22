@@ -176,26 +176,11 @@ impl AppConfig {
 
     pub fn default_profile_dir() -> PathBuf {
         if let Ok(p) = std::env::var("DESKGATE_PROFILE") {
-            let pb = PathBuf::from(p);
-            if pb.join("fences.json").exists() {
-                return pb;
-            }
+            return PathBuf::from(p);
         }
-        let exe_dir = std::env::current_exe()
+        std::env::var("APPDATA")
             .ok()
-            .and_then(|p| p.parent().map(Path::to_path_buf))
-            .unwrap_or_else(|| PathBuf::from("."));
-        let exe_profile = exe_dir.join("Profiles").join("Default");
-        if exe_profile.join("fences.json").exists() {
-            return exe_profile;
-        }
-        let cwd_profile = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join("Profiles")
-            .join("Default");
-        if cwd_profile.join("fences.json").exists() {
-            return cwd_profile;
-        }
-        exe_profile
+            .map(|p| PathBuf::from(p).join("DeskGate"))
+            .unwrap_or_else(|| PathBuf::from("Profiles"))
     }
 }
