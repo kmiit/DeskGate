@@ -243,6 +243,16 @@ impl D2DContext {
         bold: bool,
     ) -> windows::core::Result<f32> {
         let fmt = self.get_text_format(size, bold)?;
+        // The cached format is shared with `draw_fence`, which calls
+        // SetTextAlignment(TRAILING/CENTER) for non-Left titles. Combined
+        // with our enormous layoutWidth (≈ f32::MAX/4), trailing/center
+        // alignment makes DirectWrite report widthIncludingTrailingWhitespace
+        // as 0 — the layout positions the text near +∞ and the metric
+        // collapses. Reset to leading before measuring so width is stable
+        // regardless of whatever the last draw pass left on the format.
+        unsafe {
+            fmt.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)?;
+        }
         let utf16: Vec<u16> = text.encode_utf16().collect();
         unsafe {
             let layout =
