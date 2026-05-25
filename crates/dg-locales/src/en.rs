@@ -6,6 +6,7 @@ pub fn translate(key: &'static str) -> &'static str {
         TRAY_RELOAD => "Reload All",
         TRAY_ANIM_FPS => "Animation FPS",
         TRAY_DEFAULT_SETTINGS => "Default fence settings",
+        TRAY_AUTOSTART => "Start with Windows",
         TRAY_EXIT => "Exit",
         TRAY_DEFAULT_BLUR_PROMPT => "Default blur radius (0-150)",
 

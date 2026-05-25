@@ -148,6 +148,18 @@ impl TrayIcon {
                 loc::tw!(loc::LANG_LABEL),
             );
 
+            let autostart_flags = if crate::autostart::is_enabled() {
+                MF_STRING | MF_CHECKED
+            } else {
+                MF_STRING
+            };
+            let _ = AppendMenuW(
+                menu,
+                autostart_flags,
+                ID_TRAY_AUTOSTART,
+                loc::tw!(loc::TRAY_AUTOSTART),
+            );
+
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_EXIT, loc::tw!(loc::TRAY_EXIT));
 
@@ -366,6 +378,12 @@ unsafe extern "system" fn tray_wndproc(
                         let _ = DestroyWindow(hwnd);
                     }
                     PostQuitMessage(0);
+                }
+                ID_TRAY_AUTOSTART => {
+                    let enable = !crate::autostart::is_enabled();
+                    if let Err(e) = crate::autostart::set_enabled(enable) {
+                        eprintln!("Failed to toggle autostart: {:?}", e);
+                    }
                 }
                 ID_TRAY_NEW_FENCE => {
                     unsafe {

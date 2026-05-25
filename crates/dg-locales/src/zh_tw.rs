@@ -6,6 +6,7 @@ pub fn translate(key: &'static str) -> &'static str {
         TRAY_RELOAD => "重新載入",
         TRAY_ANIM_FPS => "動畫幀率",
         TRAY_DEFAULT_SETTINGS => "預設欄目設定",
+        TRAY_AUTOSTART => "開機自啟",
         TRAY_EXIT => "退出",
         TRAY_DEFAULT_BLUR_PROMPT => "預設模糊半徑 (0-150)",
 

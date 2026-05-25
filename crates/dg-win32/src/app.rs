@@ -13,6 +13,7 @@ pub const WM_TRAYICON: u32 = WM_USER + 1;
 pub const ID_TRAY_EXIT: usize = 1001;
 pub const ID_TRAY_NEW_FENCE: usize = 1002;
 pub const ID_TRAY_RELOAD: usize = 1003;
+pub const ID_TRAY_AUTOSTART: usize = 1004;
 // Animation FPS submenu: ID_TRAY_ANIM_FPS_BASE + preset index.
 pub const ID_TRAY_ANIM_FPS_BASE: usize = 1100;
 // One-shot menu item for entering a custom blur radius for new fences.

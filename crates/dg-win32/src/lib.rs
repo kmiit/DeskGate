@@ -8,6 +8,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 pub mod app;
+pub mod autostart;
 pub mod blur;
 pub mod blur_effect;
 pub mod composition;

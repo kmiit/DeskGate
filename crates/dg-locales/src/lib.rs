@@ -29,6 +29,7 @@ pub const TRAY_NEW_FENCE: &str = "tray.new_fence";
 pub const TRAY_RELOAD: &str = "tray.reload";
 pub const TRAY_ANIM_FPS: &str = "tray.anim_fps";
 pub const TRAY_DEFAULT_SETTINGS: &str = "tray.default_settings";
+pub const TRAY_AUTOSTART: &str = "tray.autostart";
 pub const TRAY_EXIT: &str = "tray.exit";
 pub const TRAY_DEFAULT_BLUR_PROMPT: &str = "tray.default_blur_prompt";
 
