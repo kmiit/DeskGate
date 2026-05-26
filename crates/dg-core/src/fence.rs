@@ -33,6 +33,12 @@ fn default_empty_tabs() -> Vec<Tab> {
 const fn default_current_tab() -> i32 {
     0
 }
+fn default_empty_note_items() -> Vec<NoteItem> {
+    Vec::new()
+}
+fn default_note_mode() -> String {
+    "text".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fence {
@@ -130,6 +136,17 @@ pub struct Fence {
     #[serde(default = "default_false", rename = "WordWrap")]
     pub word_wrap: String,
 
+    // Note mode: "text" = plain text (uses note_content), "todo" =
+    // checkable TODO list (uses note_items). Defaults to "text" so older
+    // configs that only set NoteContent keep working.
+    #[serde(default = "default_note_mode", rename = "NoteMode")]
+    pub note_mode: String,
+
+    // Items for the TODO-list variant of a Note fence. Each entry is a
+    // single row with its own checked state. Used when note_mode == "todo".
+    #[serde(default = "default_empty_note_items", rename = "NoteItems")]
+    pub note_items: Vec<NoteItem>,
+
     // Blur / opacity (Rust extension fields).
     #[serde(default = "default_true", rename = "BlurEnabled")]
     pub blur_enabled: String,
@@ -188,6 +205,18 @@ pub struct Tab {
 
     #[serde(rename = "Items")]
     pub items: Vec<FenceItem>,
+}
+
+/// One row of a TODO-list-style Note fence. Plain text with a checked
+/// flag; rendered as a checkbox + text by `draw_fence` and toggled by a
+/// click on its checkbox column.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteItem {
+    #[serde(rename = "Text")]
+    pub text: String,
+
+    #[serde(default, rename = "Checked")]
+    pub checked: bool,
 }
 
 impl FenceItem {

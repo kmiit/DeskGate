@@ -87,6 +87,8 @@ const ID_FENCE_LOCK_TOGGLE: usize = 2004;
 const ID_ITEM_OPEN: usize = 2010;
 const ID_ITEM_REMOVE: usize = 2011;
 const ID_ITEM_OPEN_LOCATION: usize = 2012;
+const ID_NOTE_EDIT: usize = 2020;
+const ID_NOTE_MODE_TOGGLE: usize = 2021;
 
 // Customize submenu IDs. Encoding (id_base + kind * 64 + value) is
 // shared with the tray's "Default fence settings" menu — see
@@ -605,6 +607,43 @@ unsafe extern "system" fn fence_wndproc(
                 return LRESULT(0);
             }
 
+            // Click on a TODO checkbox toggles its `checked` state and
+            // saves immediately. We handle this *before* the icon
+            // press-pending path so that Note fences never enter the
+            // drag-reorder gesture (they have no items / no icons).
+            let toggled = unsafe {
+                crate::app::with_state_mut(|s| {
+                    let fw = s.fences.iter_mut().find(|f| f.hwnd == hwnd)?;
+                    if fw.fence_data.items_type != "Note"
+                        || fw.fence_data.note_mode != "todo"
+                        || fw.fence_data.is_rolled == "true"
+                    {
+                        return None;
+                    }
+                    let dpi = fw.d2d.dpi;
+                    let lxf = px_to_dip(lx, dpi) as f32;
+                    let lyf = px_to_dip(ly, dpi) as f32;
+                    let layout = crate::layout::TodoLayout::from_fence(&fw.fence_data);
+                    let idx =
+                        layout.hit_checkbox(lxf, lyf, fw.fence_data.note_items.len())?;
+                    fw.fence_data.note_items[idx].checked =
+                        !fw.fence_data.note_items[idx].checked;
+                    let _ = fw.render();
+                    let id = fw.fence_data.id.clone();
+                    let items = fw.fence_data.note_items.clone();
+                    if let Some(cf) = s.config.fences.iter_mut().find(|f| f.id == id) {
+                        cf.note_items = items;
+                    }
+                    let _ = s.config.save_fences();
+                    Some(())
+                })
+                .flatten()
+                .is_some()
+            };
+            if toggled {
+                return LRESULT(0);
+            }
+
             // Press on an icon → record as pending. We don't know yet
             // whether this is a click (launch) or a drag (reorder); the
             // decision is made in WM_MOUSEMOVE once the cursor moves
@@ -1112,15 +1151,18 @@ fn handle_nchittest(hwnd: HWND, lparam: LPARAM) -> LRESULT {
 }
 
 fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
-    // Decide whether we're over an item.
-    let item_idx = unsafe {
+    // Decide whether we're over an item. Note-type fences don't have
+    // shortcut items, so skip the icon hit test for them — the empty-
+    // body context menu is what we want there.
+    let (is_note, item_idx) = unsafe {
         crate::app::with_state(|s| {
-            s.fences
-                .iter()
-                .find(|f| f.hwnd == hwnd)
-                .and_then(|fw| fw.hit_test_icon(lx, ly))
+            let fw = s.fences.iter().find(|f| f.hwnd == hwnd)?;
+            let note = fw.fence_data.items_type == "Note";
+            let idx = if note { None } else { fw.hit_test_icon(lx, ly) };
+            Some((note, idx))
         })
         .flatten()
+        .unwrap_or((false, None))
     };
 
     let mut screen_pt = POINT { x: lx, y: ly };
@@ -1155,6 +1197,20 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                     .map(|fw| fw.fence_data.clone())
             })
             .flatten();
+
+            // Note fences get their own "Edit content" + mode toggle
+            // before the generic options. The generic options (roll,
+            // rename, lock, customize) still apply.
+            if is_note {
+                let _ = AppendMenuW(menu, MF_STRING, ID_NOTE_EDIT, loc::tw!(loc::NOTE_EDIT));
+                let mode_key = match fd.as_ref().map(|f| f.note_mode.as_str() == "todo") {
+                    Some(true) => loc::NOTE_SWITCH_TO_TEXT,
+                    _ => loc::NOTE_SWITCH_TO_TODO,
+                };
+                let _ = AppendMenuW(menu, MF_STRING, ID_NOTE_MODE_TOGGLE, loc::tw!(mode_key));
+                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+            }
+
             let roll_key = match fd.as_ref().map(|f| f.is_rolled == "true") {
                 Some(true) => loc::FENCE_UNROLL,
                 _ => loc::FENCE_ROLL_UP,
@@ -1367,6 +1423,12 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                 }
             }
         }
+        ID_NOTE_EDIT => {
+            edit_note_content(hwnd);
+        }
+        ID_NOTE_MODE_TOGGLE => {
+            toggle_note_mode(hwnd);
+        }
         n if (ID_CUSTOMIZE_BASE
             ..ID_CUSTOMIZE_BASE + crate::customize::KIND_COUNT * crate::customize::KIND_STRIDE)
             .contains(&n) =>
@@ -1574,6 +1636,135 @@ fn rename_fence_via_modal(hwnd: HWND) {
                 }
                 let _ = s.config.save_fences();
             }
+        });
+    }
+}
+
+/// Read the current note body — either the plain-text `note_content`
+/// for "text" mode or a one-line-per-item rendering of `note_items` for
+/// "todo" mode — into a multiline editor, then write the result back to
+/// whichever field belongs to the current mode and persist.
+///
+/// TODO items keep their checked state across an edit: lines that come
+/// out byte-identical to an old line (after stripping a leading
+/// `[x] ` / `[ ] ` marker) inherit that old row's checkbox; new lines
+/// arrive unchecked. This is intentional — the user expected a plain
+/// text box, not a structured editor.
+fn edit_note_content(hwnd: HWND) {
+    let snapshot = unsafe {
+        crate::app::with_state(|s| {
+            s.fences
+                .iter()
+                .find(|f| f.hwnd == hwnd)
+                .map(|fw| (fw.fence_data.note_mode.clone(), fw.fence_data.clone()))
+        })
+        .flatten()
+    };
+    let Some((mode, fd)) = snapshot else {
+        return;
+    };
+
+    let initial = if mode == "todo" {
+        fd.note_items
+            .iter()
+            .map(|it| {
+                if it.checked {
+                    format!("[x] {}", it.text)
+                } else {
+                    it.text.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        fd.note_content.clone().unwrap_or_default()
+    };
+
+    let Some(text) =
+        crate::modal::input_multiline(hwnd, loc::t(loc::NOTE_EDIT_PROMPT), &initial)
+    else {
+        return;
+    };
+
+    unsafe {
+        crate::app::with_state_mut(|s| {
+            let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == hwnd) else {
+                return;
+            };
+            if fw.fence_data.note_mode == "todo" {
+                // Build the new vec, inheriting `checked` from the
+                // previous row whose text matched after stripping the
+                // optional leading marker.
+                let old: std::collections::HashMap<String, bool> = fw
+                    .fence_data
+                    .note_items
+                    .iter()
+                    .map(|it| (it.text.clone(), it.checked))
+                    .collect();
+                let mut out: Vec<dg_core::fence::NoteItem> = Vec::new();
+                for raw in text.split('\n') {
+                    let trimmed = raw.trim_end_matches('\r');
+                    // Accept an optional `[ ]` / `[x]` / `[X]` prefix as
+                    // an explicit checked state override.
+                    let (explicit, body) = if let Some(rest) = trimmed.strip_prefix("[x] ") {
+                        (Some(true), rest)
+                    } else if let Some(rest) = trimmed.strip_prefix("[X] ") {
+                        (Some(true), rest)
+                    } else if let Some(rest) = trimmed.strip_prefix("[ ] ") {
+                        (Some(false), rest)
+                    } else {
+                        (None, trimmed)
+                    };
+                    let body = body.to_string();
+                    if body.is_empty() {
+                        continue;
+                    }
+                    let checked = match explicit {
+                        Some(b) => b,
+                        None => *old.get(&body).unwrap_or(&false),
+                    };
+                    out.push(dg_core::fence::NoteItem {
+                        text: body,
+                        checked,
+                    });
+                }
+                fw.fence_data.note_items = out;
+            } else {
+                fw.fence_data.note_content = if text.is_empty() { None } else { Some(text) };
+            }
+            let _ = fw.render();
+            let id = fw.fence_data.id.clone();
+            let fd = fw.fence_data.clone();
+            if let Some(cf) = s.config.fences.iter_mut().find(|f| f.id == id) {
+                *cf = fd;
+            }
+            let _ = s.config.save_fences();
+        });
+    }
+}
+
+/// Swap a Note fence between "text" and "todo" mode without prompting.
+/// We deliberately preserve the *other* mode's payload across the
+/// switch (note_content survives a switch to todo and back) so the
+/// user can undo a wrong toggle by clicking again.
+fn toggle_note_mode(hwnd: HWND) {
+    unsafe {
+        crate::app::with_state_mut(|s| {
+            let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == hwnd) else {
+                return;
+            };
+            fw.fence_data.note_mode = if fw.fence_data.note_mode == "todo" {
+                "text".into()
+            } else {
+                "todo".into()
+            };
+            let _ = fw.render();
+            let id = fw.fence_data.id.clone();
+            let mode = fw.fence_data.note_mode.clone();
+            if let Some(cf) = s.config.fences.iter_mut().find(|f| f.id == id) {
+                cf.note_mode = mode;
+            }
+            let _ = s.config.save_fences();
         });
     }
 }

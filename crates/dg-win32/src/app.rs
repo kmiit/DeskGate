@@ -14,6 +14,8 @@ pub const ID_TRAY_EXIT: usize = 1001;
 pub const ID_TRAY_NEW_FENCE: usize = 1002;
 pub const ID_TRAY_RELOAD: usize = 1003;
 pub const ID_TRAY_AUTOSTART: usize = 1004;
+pub const ID_TRAY_NEW_NOTE: usize = 1005;
+pub const ID_TRAY_NEW_TODO: usize = 1006;
 // Animation FPS submenu: ID_TRAY_ANIM_FPS_BASE + preset index.
 pub const ID_TRAY_ANIM_FPS_BASE: usize = 1100;
 // One-shot menu item for entering a custom blur radius for new fences.

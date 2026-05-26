@@ -110,6 +110,18 @@ impl TrayIcon {
                 ID_TRAY_NEW_FENCE,
                 loc::tw!(loc::TRAY_NEW_FENCE),
             );
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_TRAY_NEW_NOTE,
+                loc::tw!(loc::TRAY_NEW_NOTE),
+            );
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_TRAY_NEW_TODO,
+                loc::tw!(loc::TRAY_NEW_TODO),
+            );
             let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_RELOAD, loc::tw!(loc::TRAY_RELOAD));
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
 
@@ -304,18 +316,30 @@ fn apply_defaults(code: usize) {
 /// Spawn a new fence using the saved `FenceDefaults` as the template.
 /// Only fields the user is allowed to preconfigure come from defaults;
 /// per-fence identity (id, position, title, items) is freshly minted.
-fn new_fence_from_defaults() -> dg_core::fence::Fence {
+/// `items_type` is "Data" for a normal shortcut fence or "Note" for a
+/// sticky-note/TODO fence; `note_mode` only matters for "Note" — pass
+/// "text" or "todo".
+fn new_fence_from_defaults(items_type: &str, note_mode: &str) -> dg_core::fence::Fence {
     let d = unsafe {
         crate::app::with_state(|s| s.config.settings.fence_defaults.clone()).unwrap_or_default()
     };
+    let title_key = if items_type == "Note" {
+        if note_mode == "todo" {
+            loc::NEW_TODO_TITLE
+        } else {
+            loc::NEW_NOTE_TITLE
+        }
+    } else {
+        loc::NEW_FENCE_TITLE
+    };
     dg_core::fence::Fence {
         id: uuid::Uuid::new_v4().to_string(),
-        title: loc::t(loc::NEW_FENCE_TITLE).to_string(),
+        title: loc::t(title_key).to_string(),
         x: 100.0,
         y: 100.0,
         width: d.width,
         height: d.height,
-        items_type: "Data".into(),
+        items_type: items_type.into(),
         items: Vec::new(),
         is_locked: "false".into(),
         is_hidden: "false".into(),
@@ -340,11 +364,36 @@ fn new_fence_from_defaults() -> dg_core::fence::Fence {
         note_font_size: "Medium".into(),
         note_font_family: None,
         word_wrap: "true".into(),
+        note_mode: note_mode.into(),
+        note_items: Vec::new(),
         blur_enabled: d.blur_enabled.clone(),
         blur_radius: d.blur_radius,
         bg_opacity: d.bg_opacity,
         show_item_labels: d.show_item_labels.clone(),
         title_text_align: d.title_text_align.clone(),
+    }
+}
+
+/// Build, register, and persist a fresh fence created from the tray
+/// menu. Shared between "New Fence", "New Note", and "New TODO" so all
+/// three entry points use the same FenceDefaults-driven shape and the
+/// same save path. `items_type` and `note_mode` are forwarded to
+/// `new_fence_from_defaults`.
+fn spawn_new_fence(items_type: &str, note_mode: &str) {
+    unsafe {
+        crate::app::with_state_mut(|s| {
+            let new_fence = new_fence_from_defaults(items_type, note_mode);
+            match FenceWindow::create(&new_fence) {
+                Ok(fw) => {
+                    s.fences.push(fw);
+                    s.config.fences.push(new_fence);
+                    let _ = s.config.save_fences();
+                }
+                Err(e) => {
+                    eprintln!("Failed to create new fence: {:?}", e)
+                }
+            }
+        });
     }
 }
 
@@ -386,21 +435,13 @@ unsafe extern "system" fn tray_wndproc(
                     }
                 }
                 ID_TRAY_NEW_FENCE => {
-                    unsafe {
-                        crate::app::with_state_mut(|s| {
-                            let new_fence = new_fence_from_defaults();
-                            match FenceWindow::create(&new_fence) {
-                                Ok(fw) => {
-                                    s.fences.push(fw);
-                                    s.config.fences.push(new_fence);
-                                    let _ = s.config.save_fences();
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to create new fence: {:?}", e)
-                                }
-                            }
-                        });
-                    };
+                    spawn_new_fence("Data", "text");
+                }
+                ID_TRAY_NEW_NOTE => {
+                    spawn_new_fence("Note", "text");
+                }
+                ID_TRAY_NEW_TODO => {
+                    spawn_new_fence("Note", "todo");
                 }
                 ID_TRAY_RELOAD => {
                     unsafe {

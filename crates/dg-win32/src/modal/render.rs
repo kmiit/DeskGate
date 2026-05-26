@@ -11,7 +11,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
 use super::run::{ModalState, body_y};
-use super::{BODY_FONT, BTN_GAP, BTN_H, BTN_W, EDIT_H, PAD, TITLE_FONT};
+use super::{BODY_FONT, BTN_GAP, BTN_H, BTN_W, EDIT_H, EDIT_H_MULTILINE, PAD, TITLE_FONT};
 
 pub(super) unsafe fn render(hwnd: HWND) -> Result<()> {
     let state_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ModalState;
@@ -89,11 +89,12 @@ pub(super) unsafe fn render(hwnd: HWND) -> Result<()> {
     // EDIT decoration or body text.
     if st.edit_hwnd.is_some() {
         let edit_y = body_y(&st.spec);
+        let edit_h = if st.spec.multiline { EDIT_H_MULTILINE } else { EDIT_H };
         let r = D2D_RECT_F {
             left: PAD,
             top: edit_y,
             right: w - PAD,
-            bottom: edit_y + EDIT_H,
+            bottom: edit_y + edit_h,
         };
         let border: ID2D1SolidColorBrush = rt.CreateSolidColorBrush(
             &D2D1_COLOR_F {

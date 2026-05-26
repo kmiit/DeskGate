@@ -18,8 +18,8 @@ use windows::core::*;
 use super::ModalSpec;
 use super::render;
 use super::{
-    AVG_BODY_GLYPH_W, AVG_TITLE_GLYPH_W, BODY_LINE_H, BTN_H, BTN_W, DRAG_STRIP_H, EDIT_H, PAD,
-    TITLE_LINE_H,
+    AVG_BODY_GLYPH_W, AVG_TITLE_GLYPH_W, BODY_LINE_H, BTN_H, BTN_W, DRAG_STRIP_H, EDIT_H,
+    EDIT_H_MULTILINE, PAD, TITLE_LINE_H,
 };
 
 const MODAL_CLASS: PCWSTR = w!("DG_MODAL_CLASS");
@@ -126,14 +126,32 @@ pub(super) fn run_modal(owner: HWND, spec: ModalSpec) -> (i32, Option<String>) {
         }
 
         if let Some(def) = (*state_ptr).spec.edit_default.clone() {
-            let wdef: Vec<u16> = def.encode_utf16().chain(std::iter::once(0)).collect();
+            let multiline = (*state_ptr).spec.multiline;
+            // EDIT controls expect CRLF line breaks, not raw LF.
+            let def_for_ctrl = if multiline {
+                def.replace("\r\n", "\n").replace('\n', "\r\n")
+            } else {
+                def
+            };
+            let wdef: Vec<u16> = def_for_ctrl
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let edit_rect = edit_rect_px(&(*state_ptr).spec, dpi);
             const ES_AUTOHSCROLL: u32 = 0x0080;
+            const ES_AUTOVSCROLL: u32 = 0x0040;
+            const ES_MULTILINE: u32 = 0x0004;
+            const ES_WANTRETURN: u32 = 0x1000;
+            let extra_style = if multiline {
+                WS_VSCROLL.0 | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN
+            } else {
+                ES_AUTOHSCROLL
+            };
             let edit = CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 w!("EDIT"),
                 PCWSTR(wdef.as_ptr()),
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(ES_AUTOHSCROLL),
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(extra_style),
                 edit_rect.left,
                 edit_rect.top,
                 edit_rect.right - edit_rect.left,
@@ -155,7 +173,13 @@ pub(super) fn run_modal(owner: HWND, spec: ModalSpec) -> (i32, Option<String>) {
                 Some(LPARAM(1)),
             );
             const EM_SETSEL: u32 = 0x00B1;
-            SendMessageW(edit, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+            if multiline {
+                // Place the caret at the end so the user can keep typing
+                // without overwriting the existing content.
+                SendMessageW(edit, EM_SETSEL, Some(WPARAM(-1i32 as usize)), Some(LPARAM(-1)));
+            } else {
+                SendMessageW(edit, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+            }
             let _ = SetFocus(Some(edit));
         }
 
@@ -180,7 +204,13 @@ pub(super) fn run_modal(owner: HWND, spec: ModalSpec) -> (i32, Option<String>) {
                     st.done = true;
                     continue;
                 }
+                // In a multi-line editor Enter must insert a newline, not
+                // commit OK — otherwise the user can't enter more than
+                // one TODO line. Ctrl+Enter still confirms.
+                let ctrl_held = (GetKeyState(VK_CONTROL.0 as i32) as u16) & 0x8000 != 0;
+                let enter_commits = !st.spec.multiline || ctrl_held;
                 if vk == VK_RETURN.0 as u32
+                    && enter_commits
                     && let Some(idx) = st.spec.buttons.iter().position(|b| b.default)
                 {
                     st.result = st.spec.buttons[idx].result;
@@ -200,7 +230,15 @@ pub(super) fn run_modal(owner: HWND, spec: ModalSpec) -> (i32, Option<String>) {
             let len = GetWindowTextLengthW(edit) as usize;
             let mut buf = vec![0u16; len + 1];
             let n = GetWindowTextW(edit, &mut buf) as usize;
-            Some(String::from_utf16_lossy(&buf[..n]))
+            let raw = String::from_utf16_lossy(&buf[..n]);
+            // The multiline EDIT control hands back CRLF line breaks.
+            // Normalize to plain \n so callers don't have to know whether
+            // they got input from a single-line or multiline editor.
+            Some(if (*state_ptr).spec.multiline {
+                raw.replace("\r\n", "\n")
+            } else {
+                raw
+            })
         } else {
             None
         };
@@ -282,7 +320,8 @@ fn total_height(spec: &ModalSpec, _dpi: u32) -> f32 {
     let title_lines = wrap_line_count(&spec.title, inner_w, AVG_TITLE_GLYPH_W);
     let mut h = PAD + (title_lines as f32) * TITLE_LINE_H + PAD;
     if spec.edit_default.is_some() {
-        h += EDIT_H + PAD;
+        let edit_h = if spec.multiline { EDIT_H_MULTILINE } else { EDIT_H };
+        h += edit_h + PAD;
     } else if let Some(body) = &spec.body {
         let body_lines = wrap_line_count(body, inner_w, AVG_BODY_GLYPH_W);
         h += (body_lines as f32) * BODY_LINE_H + PAD;
@@ -301,7 +340,8 @@ pub(super) fn body_y(spec: &ModalSpec) -> f32 {
 fn edit_rect_px(spec: &ModalSpec, dpi: u32) -> RECT {
     let pad_px = dip_to_px(PAD, dpi);
     let w_px = dip_to_px(spec.width, dpi);
-    let edit_h_px = dip_to_px(EDIT_H, dpi);
+    let edit_h_dip = if spec.multiline { EDIT_H_MULTILINE } else { EDIT_H };
+    let edit_h_px = dip_to_px(edit_h_dip, dpi);
     let inner_pad_px = dip_to_px(8.0, dpi);
     let edit_y_px = dip_to_px(body_y(spec), dpi);
     RECT {

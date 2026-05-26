@@ -35,6 +35,9 @@ pub(super) const BTN_W: f32 = 96.0;
 pub(super) const BTN_H: f32 = 30.0;
 pub(super) const BTN_GAP: f32 = 8.0;
 pub(super) const EDIT_H: f32 = 32.0;
+// Height of the multi-line editor in DIPs. Tall enough for ~10 rows at
+// the modal font size, with room for scrolling beyond.
+pub(super) const EDIT_H_MULTILINE: f32 = 220.0;
 pub(super) const TITLE_LINE_H: f32 = TITLE_FONT * 1.35;
 pub(super) const BODY_LINE_H: f32 = BODY_FONT * 1.4;
 // Average DIPs per glyph at TITLE_FONT/BODY_FONT, used as a quick wrap
@@ -60,6 +63,11 @@ pub struct ModalSpec {
     pub buttons: Vec<ButtonSpec>,
     pub edit_default: Option<String>,
     pub width: f32,
+    // When true the embedded EDIT control is created as multiline; the
+    // body area expands to the available height instead of using the
+    // single-line EDIT_H. Enter inserts a newline (not OK), so callers
+    // building TODO-list editors don't have to escape line breaks.
+    pub multiline: bool,
 }
 
 const RESULT_OK: i32 = 1;
@@ -87,6 +95,40 @@ pub fn input(owner: HWND, title: &str, default: &str) -> Option<String> {
             },
         ],
         width: 380.0,
+        multiline: false,
+    };
+    let (result, text) = run::run_modal(owner, spec);
+    if result == RESULT_OK { text } else { None }
+}
+
+/// Multi-line text editor modal. Like `input` but the embedded EDIT
+/// control accepts `\n` newlines, the modal grows taller, and Enter
+/// inserts a newline instead of committing OK (use Ctrl+Enter or click
+/// OK to confirm). Used by the Note fence "Edit content" gesture so
+/// each line of input can map to a TODO row.
+pub fn input_multiline(owner: HWND, title: &str, default: &str) -> Option<String> {
+    let spec = ModalSpec {
+        title: title.to_string(),
+        body: None,
+        edit_default: Some(default.to_string()),
+        buttons: vec![
+            ButtonSpec {
+                label: loc::t(loc::MODAL_CANCEL).to_string(),
+                result: RESULT_CANCEL,
+                default: false,
+                cancel: true,
+                destructive: false,
+            },
+            ButtonSpec {
+                label: loc::t(loc::MODAL_OK).to_string(),
+                result: RESULT_OK,
+                default: true,
+                cancel: false,
+                destructive: false,
+            },
+        ],
+        width: 480.0,
+        multiline: true,
     };
     let (result, text) = run::run_modal(owner, spec);
     if result == RESULT_OK { text } else { None }
@@ -126,6 +168,7 @@ pub fn confirm_destructive(
             },
         ],
         width: 440.0,
+        multiline: false,
     };
     let (result, _) = run::run_modal(owner, spec);
     if result == RESULT_OK {

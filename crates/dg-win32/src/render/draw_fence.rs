@@ -16,7 +16,7 @@ use windows::Win32::Graphics::DirectWrite::*;
 use windows::Win32::System::WinRT::Composition::*;
 use windows::core::*;
 
-use crate::layout::IconLayout;
+use crate::layout::{IconLayout, TodoLayout};
 
 use super::colors::{parse_fence_color, parse_text_color};
 use super::d2d_context::{CORNER_RADIUS, D2DContext, TITLE_H_DIP, dip_to_px};
@@ -195,23 +195,43 @@ pub fn draw_fence(
                 let body_color = parse_text_color(&fence.text_color);
                 let body_brush: ID2D1SolidColorBrush =
                     dc.CreateSolidColorBrush(&body_color, None)?;
-                let body_text = fence.note_content.clone().unwrap_or_default();
-                let body: Vec<u16> = body_text.encode_utf16().collect();
-                let body_rect = D2D_RECT_F {
-                    left: 12.0 + ox,
-                    top: title_h + 4.0 + oy,
-                    right: w as f32 - 12.0 + ox,
-                    bottom: h as f32 - 8.0 + oy,
-                };
-                if let Some(fmt) = &note_format {
-                    dc.DrawText(
-                        &body,
-                        fmt,
-                        &body_rect,
+
+                if fence.note_mode == "todo" {
+                    draw_todo_list(
+                        &dc,
+                        fence,
+                        ox,
+                        oy,
+                        title_h,
+                        w as f32,
+                        h as f32,
                         &body_brush,
-                        D2D1_DRAW_TEXT_OPTIONS_NONE,
-                        DWRITE_MEASURING_MODE_NATURAL,
-                    );
+                        note_format.as_ref(),
+                    )?;
+                } else {
+                    let body_text = fence.note_content.clone().unwrap_or_default();
+                    let show_text = if body_text.is_empty() {
+                        dg_locales::t(dg_locales::NOTE_EMPTY_HINT).to_string()
+                    } else {
+                        body_text
+                    };
+                    let body: Vec<u16> = show_text.encode_utf16().collect();
+                    let body_rect = D2D_RECT_F {
+                        left: 12.0 + ox,
+                        top: title_h + 4.0 + oy,
+                        right: w as f32 - 12.0 + ox,
+                        bottom: h as f32 - 8.0 + oy,
+                    };
+                    if let Some(fmt) = &note_format {
+                        dc.DrawText(
+                            &body,
+                            fmt,
+                            &body_rect,
+                            &body_brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                            DWRITE_MEASURING_MODE_NATURAL,
+                        );
+                    }
                 }
             } else {
                 let layout = IconLayout::from_fence(fence);
@@ -365,4 +385,212 @@ pub fn draw_fence(
     }
 
     Ok(())
+}
+
+/// Paint the TODO-list variant of a Note fence: one row per `NoteItem`,
+/// each row a checkbox square on the left + label text to its right.
+/// Checked rows get a brand-tinted fill in the box, a checkmark glyph,
+/// and faded/struck-through label text so the user can see at a glance
+/// what is still pending. Empty list shows a localized hint instead.
+///
+/// Coordinates here mirror `TodoLayout` so this paint and the click
+/// hit-test in `fence_window` stay in lockstep — keep them in sync if
+/// you tweak the row geometry.
+#[allow(clippy::too_many_arguments)]
+unsafe fn draw_todo_list(
+    dc: &ID2D1DeviceContext,
+    fence: &dg_core::fence::Fence,
+    ox: f32,
+    oy: f32,
+    title_h: f32,
+    w: f32,
+    h: f32,
+    body_brush: &ID2D1SolidColorBrush,
+    text_format: Option<&IDWriteTextFormat>,
+) -> windows::core::Result<()> {
+    let layout = TodoLayout::from_fence(fence);
+    // The Y in `TodoLayout::top` is measured from the fence's logical
+    // origin; draw uses an explicit title strip height of `title_h`
+    // here (which already adds its own 4-DIP gap below it). Honor
+    // whichever produces a larger top so a smaller title font doesn't
+    // clip text into the title.
+    let row_top = (layout.top).max(title_h + 4.0);
+    let bottom = h - 4.0;
+
+    // Empty-state placeholder.
+    if fence.note_items.is_empty()
+        && let Some(fmt) = text_format
+    {
+        let hint = dg_locales::t(dg_locales::NOTE_TODO_EDIT_HINT);
+        let hint_u16: Vec<u16> = hint.encode_utf16().collect();
+        let hint_rect = D2D_RECT_F {
+            left: layout.left + ox,
+            top: row_top + oy,
+            right: w - layout.left + ox,
+            bottom: bottom + oy,
+        };
+        unsafe {
+            dc.DrawText(
+                &hint_u16,
+                fmt,
+                &hint_rect,
+                body_brush,
+                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                DWRITE_MEASURING_MODE_NATURAL,
+            );
+        }
+        return Ok(());
+    }
+
+    // Reusable brushes (created once per draw).
+    let box_outline: ID2D1SolidColorBrush = unsafe {
+        dc.CreateSolidColorBrush(
+            &D2D1_COLOR_F {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 0.55,
+            },
+            None,
+        )?
+    };
+    let box_check_fill: ID2D1SolidColorBrush = unsafe {
+        dc.CreateSolidColorBrush(
+            &D2D1_COLOR_F {
+                r: 0.30,
+                g: 0.62,
+                b: 0.98,
+                a: 0.90,
+            },
+            None,
+        )?
+    };
+    let box_check_glyph: ID2D1SolidColorBrush = unsafe {
+        dc.CreateSolidColorBrush(
+            &D2D1_COLOR_F {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            },
+            None,
+        )?
+    };
+
+    for (i, it) in fence.note_items.iter().enumerate() {
+        let row_y = row_top + (i as f32) * layout.row_h;
+        if row_y >= bottom {
+            break; // Stop drawing rows that would spill past the fence body.
+        }
+        let cx = layout.left + ox;
+        let cy = row_y + (layout.row_h - layout.checkbox_size) / 2.0 + oy;
+        let box_rect = D2D_RECT_F {
+            left: cx,
+            top: cy,
+            right: cx + layout.checkbox_size,
+            bottom: cy + layout.checkbox_size,
+        };
+        let box_rr = D2D1_ROUNDED_RECT {
+            rect: box_rect,
+            radiusX: 3.0,
+            radiusY: 3.0,
+        };
+        if it.checked {
+            unsafe {
+                dc.FillRoundedRectangle(&box_rr, &box_check_fill);
+                draw_checkmark(dc, &box_rect, &box_check_glyph);
+            }
+        } else {
+            unsafe {
+                dc.DrawRoundedRectangle(&box_rr, &box_outline, 1.5, None);
+            }
+        }
+
+        if let Some(fmt) = text_format {
+            let text_left = cx + layout.checkbox_size + layout.checkbox_text_gap;
+            let text_rect = D2D_RECT_F {
+                left: text_left,
+                top: row_y + oy,
+                right: w - 8.0 + ox,
+                bottom: row_y + layout.row_h + oy,
+            };
+            let text_u16: Vec<u16> = it.text.encode_utf16().collect();
+            // Checked rows get a faded label so they recede visually.
+            let row_brush: ID2D1SolidColorBrush = if it.checked {
+                unsafe {
+                    dc.CreateSolidColorBrush(
+                        &D2D1_COLOR_F {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 0.55,
+                        },
+                        None,
+                    )?
+                }
+            } else {
+                body_brush.clone()
+            };
+            unsafe {
+                dc.DrawText(
+                    &text_u16,
+                    fmt,
+                    &text_rect,
+                    &row_brush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                    DWRITE_MEASURING_MODE_NATURAL,
+                );
+            }
+            // Strike-through line for checked rows. Drawn near the
+            // vertical middle of the label area so it lands on the
+            // text body regardless of font size.
+            if it.checked {
+                let strike_y = row_y + layout.row_h * 0.55 + oy;
+                let pt1 = windows_numerics::Vector2 {
+                    X: text_left,
+                    Y: strike_y,
+                };
+                let pt2 = windows_numerics::Vector2 {
+                    X: w - 8.0 + ox,
+                    Y: strike_y,
+                };
+                unsafe {
+                    dc.DrawLine(pt1, pt2, &row_brush, 1.0, None);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Paint a simple two-segment checkmark glyph inside the checked box.
+/// Stays geometric (not a font) so it scales with the box size and
+/// looks the same on every machine.
+unsafe fn draw_checkmark(
+    dc: &ID2D1DeviceContext,
+    rect: &D2D_RECT_F,
+    brush: &ID2D1SolidColorBrush,
+) {
+    let cx = rect.left;
+    let cy = rect.top;
+    let w = rect.right - rect.left;
+    let h = rect.bottom - rect.top;
+    let stroke = (w.min(h) * 0.18).max(1.5);
+    let p1 = windows_numerics::Vector2 {
+        X: cx + w * 0.22,
+        Y: cy + h * 0.52,
+    };
+    let p2 = windows_numerics::Vector2 {
+        X: cx + w * 0.42,
+        Y: cy + h * 0.72,
+    };
+    let p3 = windows_numerics::Vector2 {
+        X: cx + w * 0.78,
+        Y: cy + h * 0.30,
+    };
+    unsafe {
+        dc.DrawLine(p1, p2, brush, stroke, None);
+        dc.DrawLine(p2, p3, brush, stroke, None);
+    }
 }

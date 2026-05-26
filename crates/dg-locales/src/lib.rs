@@ -26,6 +26,8 @@ macro_rules! tw {
 
 // Tray menu
 pub const TRAY_NEW_FENCE: &str = "tray.new_fence";
+pub const TRAY_NEW_NOTE: &str = "tray.new_note";
+pub const TRAY_NEW_TODO: &str = "tray.new_todo";
 pub const TRAY_RELOAD: &str = "tray.reload";
 pub const TRAY_ANIM_FPS: &str = "tray.anim_fps";
 pub const TRAY_DEFAULT_SETTINGS: &str = "tray.default_settings";
@@ -46,6 +48,14 @@ pub const FENCE_CUSTOMIZE: &str = "fence.customize";
 pub const FENCE_DELETE: &str = "fence.delete";
 pub const FENCE_BLUR_PROMPT: &str = "fence.blur_prompt";
 pub const FENCE_RENAME_PROMPT: &str = "fence.rename_prompt";
+
+// Note fence context menu
+pub const NOTE_EDIT: &str = "note.edit";
+pub const NOTE_EDIT_PROMPT: &str = "note.edit_prompt";
+pub const NOTE_SWITCH_TO_TODO: &str = "note.switch_to_todo";
+pub const NOTE_SWITCH_TO_TEXT: &str = "note.switch_to_text";
+pub const NOTE_TODO_EDIT_HINT: &str = "note.todo_edit_hint";
+pub const NOTE_EMPTY_HINT: &str = "note.empty_hint";
 
 // FPS presets
 pub const FPS_OFF: &str = "fps.off";
@@ -103,6 +113,8 @@ pub const DELETE_CONFIRM: &str = "delete.confirm";
 
 // New fence default title
 pub const NEW_FENCE_TITLE: &str = "new_fence_title";
+pub const NEW_NOTE_TITLE: &str = "new_note_title";
+pub const NEW_TODO_TITLE: &str = "new_todo_title";
 
 // Title alignment
 pub const CUSTOMIZE_TITLE_ALIGN: &str = "customize.title_align";

@@ -3,6 +3,8 @@ use crate::*;
 pub fn translate(key: &'static str) -> &'static str {
     match key {
         TRAY_NEW_FENCE => "新建栏目",
+        TRAY_NEW_NOTE => "新建便签",
+        TRAY_NEW_TODO => "新建待办列表",
         TRAY_RELOAD => "重新加载",
         TRAY_ANIM_FPS => "动画帧率",
         TRAY_DEFAULT_SETTINGS => "默认栏目设置",
@@ -22,6 +24,13 @@ pub fn translate(key: &'static str) -> &'static str {
         FENCE_DELETE => "删除栏目",
         FENCE_BLUR_PROMPT => "模糊半径 (0-150)",
         FENCE_RENAME_PROMPT => "重命名栏目",
+
+        NOTE_EDIT => "编辑内容...",
+        NOTE_EDIT_PROMPT => "编辑便签 (待办列表每行一条)",
+        NOTE_SWITCH_TO_TODO => "切换为待办列表",
+        NOTE_SWITCH_TO_TEXT => "切换为纯文本",
+        NOTE_TODO_EDIT_HINT => "(右键 → 编辑内容 添加事项)",
+        NOTE_EMPTY_HINT => "(右键 → 编辑内容)",
 
         FPS_OFF => "关闭 (吸附)",
         FPS_DEFAULT => "60 帧 (默认)",
@@ -75,6 +84,8 @@ pub fn translate(key: &'static str) -> &'static str {
         DELETE_CONFIRM => "删除栏目",
 
         NEW_FENCE_TITLE => "新建栏目 - 拖放快捷方式到此处",
+        NEW_NOTE_TITLE => "新建便签",
+        NEW_TODO_TITLE => "新建待办列表",
 
         LANG_LABEL => "语言",
         LANG_EN => "English",

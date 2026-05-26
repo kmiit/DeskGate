@@ -3,6 +3,8 @@ use crate::*;
 pub fn translate(key: &'static str) -> &'static str {
     match key {
         TRAY_NEW_FENCE => "New Fence",
+        TRAY_NEW_NOTE => "New Note",
+        TRAY_NEW_TODO => "New TODO List",
         TRAY_RELOAD => "Reload All",
         TRAY_ANIM_FPS => "Animation FPS",
         TRAY_DEFAULT_SETTINGS => "Default fence settings",
@@ -22,6 +24,13 @@ pub fn translate(key: &'static str) -> &'static str {
         FENCE_DELETE => "Delete fence",
         FENCE_BLUR_PROMPT => "Blur radius (0-150)",
         FENCE_RENAME_PROMPT => "Rename fence",
+
+        NOTE_EDIT => "Edit content...",
+        NOTE_EDIT_PROMPT => "Edit note (one line per TODO item)",
+        NOTE_SWITCH_TO_TODO => "Switch to TODO list",
+        NOTE_SWITCH_TO_TEXT => "Switch to plain text",
+        NOTE_TODO_EDIT_HINT => "(Right-click → Edit content to add items)",
+        NOTE_EMPTY_HINT => "(Right-click → Edit content)",
 
         FPS_OFF => "Off (snap)",
         FPS_DEFAULT => "60 FPS (default)",
@@ -77,6 +86,8 @@ pub fn translate(key: &'static str) -> &'static str {
         DELETE_CONFIRM => "Delete fence",
 
         NEW_FENCE_TITLE => "New Fence - Drop your shortcuts here",
+        NEW_NOTE_TITLE => "New Note",
+        NEW_TODO_TITLE => "New TODO List",
 
         LANG_LABEL => "Language",
         LANG_EN => "English",
