@@ -40,12 +40,25 @@ pub fn draw_fence(
     ctx: &mut D2DContext,
     fence: &Fence,
     drag: Option<DragHint>,
+    anim_h_dip: Option<f32>,
 ) -> windows::core::Result<()> {
     let w = fence.width as u32;
-    let h = if fence.is_rolled == "true" {
-        TITLE_H_DIP as u32
-    } else {
-        fence.height as u32
+    // While a roll animation is running, the caller hands us the current
+    // interpolated height so the D2D surface tracks the window — content
+    // gets clipped as the window shrinks (roll-up) or revealed as it grows
+    // (roll-down). Without this the surface would snap to its final size
+    // on the first animation frame, making icons disappear/reappear in one
+    // jarring step.
+    let (h, animating) = match anim_h_dip {
+        Some(ah) => (ah.round().max(1.0) as u32, true),
+        None => (
+            if fence.is_rolled == "true" {
+                TITLE_H_DIP as u32
+            } else {
+                fence.height as u32
+            },
+            false,
+        ),
     };
     if w == 0 || h == 0 {
         return Ok(());
@@ -173,7 +186,11 @@ pub fn draw_fence(
             DWRITE_MEASURING_MODE_NATURAL,
         );
 
-        if fence.is_rolled != "true" {
+        // Outside an animation, the `is_rolled` flag gates whether body
+        // content draws at all. During a roll-up/-down animation we draw
+        // the body unconditionally so icons fade away with the shrinking
+        // surface (or appear with the growing one) instead of popping.
+        if animating || fence.is_rolled != "true" {
             if fence.items_type == "Note" {
                 let body_color = parse_text_color(&fence.text_color);
                 let body_brush: ID2D1SolidColorBrush =

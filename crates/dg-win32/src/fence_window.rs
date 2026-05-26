@@ -193,10 +193,15 @@ pub struct AnimState {
     pub duration_ms: u32,
     pub start_h: i32,
     pub target_h: i32,
+    // Final `is_rolled` state to persist once the timer expires. The
+    // flag is deferred — not flipped at gesture start — so renders mid-
+    // animation still see the "departing" state and draw the body for
+    // the fade-away/-in to play out.
+    pub target_rolled: bool,
 }
 
 const TIMER_ID_ANIM: usize = 1;
-const ROLL_ANIM_MS: u32 = 120;
+const ROLL_ANIM_MS: u32 = 220;
 const TIMER_ID_DRAG: usize = 2;
 const DRAG_ANIM_MS: u32 = 180;
 
@@ -294,6 +299,19 @@ impl DragRenderState {
 
 fn ease_out_cubic(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
+}
+
+/// Symmetric ease used by the roll animation — accelerates into the
+/// gesture and decelerates out of it, so both opening and closing feel
+/// balanced. `ease_out_cubic` was punchy but lopsided in the closing
+/// direction, hence the swap.
+fn ease_in_out_cubic(t: f32) -> f32 {
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        let f = -2.0 * t + 2.0;
+        1.0 - f * f * f / 2.0
+    }
 }
 
 /// Convert a chosen animation FPS into the `SetTimer` interval in
@@ -412,7 +430,20 @@ impl FenceWindow {
                 item_slots,
             }
         });
-        draw_fence(&mut self.d2d, &self.fence_data, drag)?;
+        // Surface-height override while the roll animation is running.
+        // draw_fence uses it to size the D2D surface to the current
+        // window height, so content clips/reveals naturally instead of
+        // popping. None outside an animation — draw_fence falls back to
+        // is_rolled / fence.height.
+        let anim_h_dip = self.anim.as_ref().map(|anim| {
+            let now = unsafe { windows::Win32::System::SystemInformation::GetTickCount() };
+            let elapsed = now.wrapping_sub(anim.start_tick);
+            let t = (elapsed as f32 / anim.duration_ms as f32).clamp(0.0, 1.0);
+            let e = ease_in_out_cubic(t);
+            let new_h_px = anim.start_h as f32 + (anim.target_h - anim.start_h) as f32 * e;
+            px_to_dip(new_h_px.round() as i32, self.d2d.dpi) as f32
+        });
+        draw_fence(&mut self.d2d, &self.fence_data, drag, anim_h_dip)?;
         Ok(())
     }
 
@@ -436,18 +467,37 @@ impl FenceWindow {
         let start_h = rect.bottom - rect.top;
         let dpi = self.d2d.dpi;
 
-        let target_h = if self.fence_data.is_rolled == "true" {
-            self.fence_data.is_rolled = "false".into();
-            dip_to_px(self.fence_data.unrolled_height, dpi)
-        } else {
-            self.fence_data.is_rolled = "true".into();
+        // The user's "current intent" is whatever the running animation
+        // is heading toward, or the confirmed `is_rolled` flag if nothing
+        // is animating. Toggling against the in-flight target lets a
+        // mid-roll click instantly reverse direction.
+        let confirmed_rolled = self.fence_data.is_rolled == "true";
+        let currently_targeting = self
+            .anim
+            .as_ref()
+            .map(|a| a.target_rolled)
+            .unwrap_or(confirmed_rolled);
+        let target_rolled = !currently_targeting;
+
+        // Only stamp `unrolled_height` on the FIRST transition from a
+        // confirmed-unrolled state into rolling up. A mid-roll reversal
+        // (rolling up → rolling down → rolling up) must not overwrite
+        // the original full height with a half-collapsed value.
+        if target_rolled && !confirmed_rolled {
             self.fence_data.unrolled_height = self.fence_data.height;
+        }
+
+        let target_h = if target_rolled {
             dip_to_px(TITLE_H_DIP as f64, dpi)
+        } else {
+            dip_to_px(self.fence_data.unrolled_height, dpi)
         };
 
-        // Animation off → resize in one shot and skip the timer. Keeps
-        // the same final state (height, is_rolled) as the animated path.
+        // Animation off → resize in one shot and commit the new state.
+        // Keeps the same final state (height, is_rolled) as the
+        // animated path.
         let Some(interval) = anim_timer_interval(anim_fps) else {
+            self.fence_data.is_rolled = if target_rolled { "true" } else { "false" }.into();
             let w = dip_to_px(self.fence_data.width, dpi);
             unsafe {
                 let _ = SetWindowPos(
@@ -469,6 +519,7 @@ impl FenceWindow {
             duration_ms: ROLL_ANIM_MS,
             start_h,
             target_h,
+            target_rolled,
         });
         unsafe {
             let _ = SetTimer(Some(self.hwnd), TIMER_ID_ANIM, interval, None);
@@ -1326,15 +1377,27 @@ fn tick_animation(hwnd: HWND) {
             let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == hwnd) else {
                 return;
             };
-            let Some(anim) = fw.anim.as_ref() else {
-                return;
+            // Copy out the scalars we need from the anim so the immutable
+            // borrow ends before we hand `fw` over to `render` (which
+            // takes &mut self).
+            let (start_tick, duration_ms, start_h, target_h, target_rolled) = match fw.anim.as_ref()
+            {
+                Some(a) => (
+                    a.start_tick,
+                    a.duration_ms,
+                    a.start_h,
+                    a.target_h,
+                    a.target_rolled,
+                ),
+                None => return,
             };
             let now = windows::Win32::System::SystemInformation::GetTickCount();
-            let elapsed = now.wrapping_sub(anim.start_tick);
-            let t: f32 = (elapsed as f32 / anim.duration_ms as f32).clamp(0.0, 1.0);
-            // Ease-out cubic.
-            let e = 1.0 - (1.0 - t).powi(3);
-            let new_h = anim.start_h as f32 + (anim.target_h - anim.start_h) as f32 * e;
+            let elapsed = now.wrapping_sub(start_tick);
+            let t: f32 = (elapsed as f32 / duration_ms as f32).clamp(0.0, 1.0);
+            // Symmetric easing — both the open and the close phases get a
+            // matching ease-in / ease-out so the gesture feels balanced.
+            let e = ease_in_out_cubic(t);
+            let new_h = start_h as f32 + (target_h - start_h) as f32 * e;
             // start_h / target_h are in physical pixels, so new_h is too.
             let w = dip_to_px(fw.fence_data.width, fw.d2d.dpi);
             let _ = SetWindowPos(
@@ -1348,8 +1411,14 @@ fn tick_animation(hwnd: HWND) {
             );
             let _ = fw.render();
             if t >= 1.0 {
+                // Commit the deferred is_rolled flip now that the
+                // animation has played out — the in-flight renders saw
+                // the departing state so the body could fade away/in,
+                // and from now on renders should use the new state.
                 let _ = KillTimer(Some(hwnd), TIMER_ID_ANIM);
                 fw.anim = None;
+                fw.fence_data.is_rolled = if target_rolled { "true" } else { "false" }.into();
+                let _ = fw.render();
             }
         });
     }
