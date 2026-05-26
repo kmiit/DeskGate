@@ -1579,7 +1579,15 @@ fn rename_fence_via_modal(hwnd: HWND) {
 }
 
 fn launch_item(item: &FenceItem) {
-    let (target, args, working_dir) =
+    launch_item_with_files(item, &[]);
+}
+
+/// Launch the program/shortcut described by `item`, optionally appending
+/// a list of file paths as additional command-line arguments. Used by
+/// the click/Enter "open" path (`extra_files` empty) and by the
+/// drag-onto-icon "open with X" path in drop_target.
+pub(crate) fn launch_item_with_files(item: &FenceItem, extra_files: &[String]) {
+    let (target, mut args, working_dir) =
         if item.is_link || item.filename.to_ascii_lowercase().ends_with(".lnk") {
             match resolve_lnk(&item.filename) {
                 Some(info) => {
@@ -1606,6 +1614,23 @@ fn launch_item(item: &FenceItem) {
 
     if target.is_empty() {
         return;
+    }
+
+    // Append dropped files as quoted command-line tokens. The shell
+    // splits a command line on whitespace unless the token is quoted, so
+    // any path containing a space must be wrapped — a raw `C:\Program
+    // Files\foo.txt` would be split into two arguments otherwise.
+    if !extra_files.is_empty() {
+        let extra = extra_files
+            .iter()
+            .map(|p| format!("\"{}\"", p))
+            .collect::<Vec<_>>()
+            .join(" ");
+        args = if args.is_empty() {
+            extra
+        } else {
+            format!("{} {}", args, extra)
+        };
     }
 
     let wtarget: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();

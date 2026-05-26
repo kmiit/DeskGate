@@ -83,6 +83,9 @@ pub fn translate(key: &'static str) -> &'static str {
         LANG_ZH_CN => "简体中文",
         LANG_ZH_TW => "繁體中文",
 
+        DROP_DESC_OPEN_WITH => "Open with %1",
+        DROP_DESC_ADD_TO => "Add to %1",
+
         _ => key,
     }
 }

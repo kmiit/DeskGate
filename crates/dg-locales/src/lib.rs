@@ -116,6 +116,13 @@ pub const LANG_EN: &str = "lang.en";
 pub const LANG_ZH_CN: &str = "lang.zh_cn";
 pub const LANG_ZH_TW: &str = "lang.zh_tw";
 
+// Shell drop-description templates. Shown next to the cursor while
+// dragging files over a fence. `%1` is replaced by Shell with the
+// `szInsert` field of the DROPDESCRIPTION struct (NOT a Rust format
+// arg) — keep the literal "%1" intact.
+pub const DROP_DESC_OPEN_WITH: &str = "drop.open_with";
+pub const DROP_DESC_ADD_TO: &str = "drop.add_to";
+
 // ---------------------------------------------------------------------------
 // Locale
 // ---------------------------------------------------------------------------
