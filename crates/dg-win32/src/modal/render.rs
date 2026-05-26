@@ -89,7 +89,11 @@ pub(super) unsafe fn render(hwnd: HWND) -> Result<()> {
     // EDIT decoration or body text.
     if st.edit_hwnd.is_some() {
         let edit_y = body_y(&st.spec);
-        let edit_h = if st.spec.multiline { EDIT_H_MULTILINE } else { EDIT_H };
+        let edit_h = if st.spec.multiline {
+            EDIT_H_MULTILINE
+        } else {
+            EDIT_H
+        };
         let r = D2D_RECT_F {
             left: PAD,
             top: edit_y,

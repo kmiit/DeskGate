@@ -176,7 +176,12 @@ pub(super) fn run_modal(owner: HWND, spec: ModalSpec) -> (i32, Option<String>) {
             if multiline {
                 // Place the caret at the end so the user can keep typing
                 // without overwriting the existing content.
-                SendMessageW(edit, EM_SETSEL, Some(WPARAM(-1i32 as usize)), Some(LPARAM(-1)));
+                SendMessageW(
+                    edit,
+                    EM_SETSEL,
+                    Some(WPARAM(-1i32 as usize)),
+                    Some(LPARAM(-1)),
+                );
             } else {
                 SendMessageW(edit, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
             }
@@ -320,7 +325,11 @@ fn total_height(spec: &ModalSpec, _dpi: u32) -> f32 {
     let title_lines = wrap_line_count(&spec.title, inner_w, AVG_TITLE_GLYPH_W);
     let mut h = PAD + (title_lines as f32) * TITLE_LINE_H + PAD;
     if spec.edit_default.is_some() {
-        let edit_h = if spec.multiline { EDIT_H_MULTILINE } else { EDIT_H };
+        let edit_h = if spec.multiline {
+            EDIT_H_MULTILINE
+        } else {
+            EDIT_H
+        };
         h += edit_h + PAD;
     } else if let Some(body) = &spec.body {
         let body_lines = wrap_line_count(body, inner_w, AVG_BODY_GLYPH_W);
@@ -340,7 +349,11 @@ pub(super) fn body_y(spec: &ModalSpec) -> f32 {
 fn edit_rect_px(spec: &ModalSpec, dpi: u32) -> RECT {
     let pad_px = dip_to_px(PAD, dpi);
     let w_px = dip_to_px(spec.width, dpi);
-    let edit_h_dip = if spec.multiline { EDIT_H_MULTILINE } else { EDIT_H };
+    let edit_h_dip = if spec.multiline {
+        EDIT_H_MULTILINE
+    } else {
+        EDIT_H
+    };
     let edit_h_px = dip_to_px(edit_h_dip, dpi);
     let inner_pad_px = dip_to_px(8.0, dpi);
     let edit_y_px = dip_to_px(body_y(spec), dpi);

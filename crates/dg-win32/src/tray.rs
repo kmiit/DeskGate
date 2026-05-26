@@ -366,6 +366,7 @@ fn new_fence_from_defaults(items_type: &str, note_mode: &str) -> dg_core::fence:
         word_wrap: "true".into(),
         note_mode: note_mode.into(),
         note_items: Vec::new(),
+        note_text_align: "Left".into(),
         blur_enabled: d.blur_enabled.clone(),
         blur_radius: d.blur_radius,
         bg_opacity: d.bg_opacity,

@@ -624,10 +624,20 @@ unsafe extern "system" fn fence_wndproc(
                     let lxf = px_to_dip(lx, dpi) as f32;
                     let lyf = px_to_dip(ly, dpi) as f32;
                     let layout = crate::layout::TodoLayout::from_fence(&fw.fence_data);
-                    let idx =
-                        layout.hit_checkbox(lxf, lyf, fw.fence_data.note_items.len())?;
-                    fw.fence_data.note_items[idx].checked =
-                        !fw.fence_data.note_items[idx].checked;
+                    let font_size = layout.font_size;
+                    // Borrow the fence's data immutably for compute_rows
+                    // while still letting the closure mutably borrow
+                    // d2d via the disjoint-field rule.
+                    let rows = {
+                        let fence = &fw.fence_data;
+                        let d2d = &mut fw.d2d;
+                        layout.compute_rows(fence, &mut |text, max_w| {
+                            d2d.measure_text_height(text, font_size, false, max_w)
+                                .unwrap_or(font_size * 1.3)
+                        })
+                    };
+                    let idx = layout.hit_checkbox(&rows, lxf, lyf)?;
+                    fw.fence_data.note_items[idx].checked = !fw.fence_data.note_items[idx].checked;
                     let _ = fw.render();
                     let id = fw.fence_data.id.clone();
                     let items = fw.fence_data.note_items.clone();
@@ -1512,6 +1522,12 @@ fn apply_customize(hwnd: HWND, code: usize) {
                     };
                     f.title_text_align = v;
                 }
+                KIND_NOTE_ALIGN => {
+                    let Some(v) = decoded_note_align(value) else {
+                        return;
+                    };
+                    f.note_text_align = v;
+                }
                 _ => {}
             }
             let _ = fw.render();
@@ -1680,8 +1696,7 @@ fn edit_note_content(hwnd: HWND) {
         fd.note_content.clone().unwrap_or_default()
     };
 
-    let Some(text) =
-        crate::modal::input_multiline(hwnd, loc::t(loc::NOTE_EDIT_PROMPT), &initial)
+    let Some(text) = crate::modal::input_multiline(hwnd, loc::t(loc::NOTE_EDIT_PROMPT), &initial)
     else {
         return;
     };

@@ -48,6 +48,7 @@ pub fn translate(key: &'static str) -> &'static str {
         CUSTOMIZE_BLUR_RADIUS => "模糊半徑...",
         CUSTOMIZE_BG_OPACITY => "背景不透明度",
         CUSTOMIZE_TITLE_ALIGN => "標題對齊",
+        CUSTOMIZE_NOTE_ALIGN => "便箋對齊",
         ALIGN_LEFT => "靠左",
         ALIGN_CENTER => "置中",
         ALIGN_RIGHT => "靠右",

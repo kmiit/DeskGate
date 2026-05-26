@@ -264,6 +264,35 @@ impl D2DContext {
         }
     }
 
+    /// Measure the rendered height of a string in DIPs at the given size /
+    /// weight when laid out within `max_width`. Used by the TODO-list
+    /// renderer and click hit-tester to agree on how much vertical room
+    /// each wrapped row consumes.
+    pub fn measure_text_height(
+        &mut self,
+        text: &str,
+        size: f32,
+        bold: bool,
+        max_width: f32,
+    ) -> windows::core::Result<f32> {
+        let fmt = self.get_text_format(size, bold)?;
+        unsafe {
+            fmt.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)?;
+        }
+        let utf16: Vec<u16> = text.encode_utf16().collect();
+        unsafe {
+            let layout = self.dwrite_factory.CreateTextLayout(
+                &utf16,
+                &fmt,
+                max_width.max(1.0),
+                f32::MAX / 4.0,
+            )?;
+            let mut metrics = DWRITE_TEXT_METRICS::default();
+            layout.GetMetrics(&mut metrics)?;
+            Ok(metrics.height.max(size * 1.3))
+        }
+    }
+
     /// Update the DPI for this fence's window. Caller should re-render after
     /// changing DPI; the next ensure_surface call will reallocate the drawing
     /// surface at the new physical size and update the root visual scale.

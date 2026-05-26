@@ -35,7 +35,8 @@ pub const KIND_BLUR_TOGGLE: usize = 8;
 pub const KIND_BG_OPACITY: usize = 9;
 pub const KIND_LABELS_TOGGLE: usize = 10;
 pub const KIND_TITLE_ALIGN: usize = 11;
-pub const KIND_COUNT: usize = 12;
+pub const KIND_NOTE_ALIGN: usize = 12;
+pub const KIND_COUNT: usize = 13;
 pub const KIND_STRIDE: usize = 64;
 
 #[inline]
@@ -153,6 +154,10 @@ pub struct CustomizeView<'a> {
     pub bg_opacity: f64,
     pub labels: bool,
     pub title_align: &'a str,
+    // Some(align) when the underlying fence is a Note type so the
+    // alignment submenu should appear. None for shortcut fences and the
+    // global FenceDefaults (which doesn't carry a note alignment).
+    pub note_align: Option<&'a str>,
 }
 
 impl<'a> From<&'a Fence> for CustomizeView<'a> {
@@ -170,6 +175,11 @@ impl<'a> From<&'a Fence> for CustomizeView<'a> {
             bg_opacity: f.bg_opacity,
             labels: f.show_item_labels == "true",
             title_align: &f.title_text_align,
+            note_align: if f.items_type == "Note" {
+                Some(&f.note_text_align)
+            } else {
+                None
+            },
         }
     }
 }
@@ -189,6 +199,7 @@ impl<'a> From<&'a FenceDefaults> for CustomizeView<'a> {
             bg_opacity: d.bg_opacity,
             labels: d.show_item_labels == "true",
             title_align: &d.title_text_align,
+            note_align: None,
         }
     }
 }
@@ -275,6 +286,16 @@ pub fn build_customize_menu(
             view.title_align,
             loc::tw!(loc::CUSTOMIZE_TITLE_ALIGN),
         );
+        if let Some(note_align) = view.note_align {
+            append_str_submenu(
+                menu,
+                id_base,
+                KIND_NOTE_ALIGN,
+                TITLE_ALIGNS,
+                note_align,
+                loc::tw!(loc::CUSTOMIZE_NOTE_ALIGN),
+            );
+        }
         append_toggle(
             menu,
             encode(id_base, KIND_LABELS_TOGGLE, 0),
@@ -426,5 +447,13 @@ pub fn decoded_opacity(value: usize) -> Option<f64> {
 }
 
 pub fn decoded_title_align(value: usize) -> Option<String> {
+    TITLE_ALIGNS.get(value).map(|(v, _)| v.to_string())
+}
+
+/// Note text alignment shares the same string values as the title
+/// alignment ("Left"/"Center"/"Right"), so it just defers to the same
+/// table. Kept under its own name so the per-kind dispatch reads
+/// symmetrically alongside the others.
+pub fn decoded_note_align(value: usize) -> Option<String> {
     TITLE_ALIGNS.get(value).map(|(v, _)| v.to_string())
 }

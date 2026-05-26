@@ -48,6 +48,7 @@ pub fn translate(key: &'static str) -> &'static str {
         CUSTOMIZE_BLUR_RADIUS => "Blur radius...",
         CUSTOMIZE_BG_OPACITY => "Background opacity",
         CUSTOMIZE_TITLE_ALIGN => "Title alignment",
+        CUSTOMIZE_NOTE_ALIGN => "Note alignment",
         ALIGN_LEFT => "Left",
         ALIGN_CENTER => "Center",
         ALIGN_RIGHT => "Right",

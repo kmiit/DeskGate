@@ -16,7 +16,7 @@ use windows::Win32::Graphics::DirectWrite::*;
 use windows::Win32::System::WinRT::Composition::*;
 use windows::core::*;
 
-use crate::layout::{IconLayout, TodoLayout};
+use crate::layout::{IconLayout, TodoAlign, TodoLayout, TodoRowGeom};
 
 use super::colors::{parse_fence_color, parse_text_color};
 use super::d2d_context::{CORNER_RADIUS, D2DContext, TITLE_H_DIP, dip_to_px};
@@ -102,6 +102,43 @@ pub fn draw_fence(
     } else {
         None
     };
+
+    // Apply the note's alignment to the shared format. The format is
+    // cached across draws so setting it each frame is required —
+    // otherwise the title's alignment (set above) would leak through
+    // for plain-text notes.
+    let note_dwrite_align = match fence.note_text_align.as_str() {
+        "Right" => DWRITE_TEXT_ALIGNMENT_TRAILING,
+        "Center" => DWRITE_TEXT_ALIGNMENT_CENTER,
+        _ => DWRITE_TEXT_ALIGNMENT_LEADING,
+    };
+    if let Some(fmt) = &note_format {
+        unsafe {
+            fmt.SetTextAlignment(note_dwrite_align)?;
+        }
+    }
+
+    // Pre-compute per-row geometry for the TODO variant. This must
+    // happen before the `unsafe { BeginDraw … }` block below because
+    // measure_text_height borrows ctx mutably and a TODO row's height
+    // depends on wrapped-text height for the row's font size + max
+    // width.
+    let todo_geom: Option<(TodoLayout, Vec<TodoRowGeom>)> =
+        if fence.items_type == "Note" && fence.note_mode == "todo" {
+            let layout = TodoLayout::from_fence(fence);
+            let font_size = layout.font_size;
+            let rows = layout.compute_rows(fence, &mut |text, max_w| {
+                ctx.measure_text_height(text, font_size, false, max_w)
+                    .unwrap_or(font_size * 1.3)
+            });
+            Some((layout, rows))
+        } else {
+            None
+        };
+
+    // Snapshot the DWrite factory so the unsafe block can build per-row
+    // IDWriteTextLayouts without holding a mutable borrow on `ctx`.
+    let dwrite = ctx.dwrite_factory.clone();
 
     unsafe {
         let surface = ctx.drawing_surface.as_ref().unwrap();
@@ -197,17 +234,24 @@ pub fn draw_fence(
                     dc.CreateSolidColorBrush(&body_color, None)?;
 
                 if fence.note_mode == "todo" {
-                    draw_todo_list(
-                        &dc,
-                        fence,
-                        ox,
-                        oy,
-                        title_h,
-                        w as f32,
-                        h as f32,
-                        &body_brush,
-                        note_format.as_ref(),
-                    )?;
+                    if let (Some((layout, rows)), Some(fmt)) =
+                        (todo_geom.as_ref(), note_format.as_ref())
+                    {
+                        draw_todo_list(
+                            &dc,
+                            fence,
+                            layout,
+                            rows,
+                            &dwrite,
+                            fmt,
+                            &body_brush,
+                            ox,
+                            oy,
+                            title_h,
+                            w as f32,
+                            h as f32,
+                        )?;
+                    }
                 } else {
                     let body_text = fence.note_content.clone().unwrap_or_default();
                     let show_text = if body_text.is_empty() {
@@ -388,51 +432,48 @@ pub fn draw_fence(
 }
 
 /// Paint the TODO-list variant of a Note fence: one row per `NoteItem`,
-/// each row a checkbox square on the left + label text to its right.
-/// Checked rows get a brand-tinted fill in the box, a checkmark glyph,
-/// and faded/struck-through label text so the user can see at a glance
-/// what is still pending. Empty list shows a localized hint instead.
+/// each row a checkbox square + label text. Checked rows fill the box
+/// with the brand tint, draw a checkmark glyph, fade the label, and let
+/// IDWriteTextLayout's built-in strikethrough run through *only the
+/// glyph runs* (so wrapped lines get their own per-line strike that
+/// stops at the last character).
 ///
-/// Coordinates here mirror `TodoLayout` so this paint and the click
-/// hit-test in `fence_window` stay in lockstep — keep them in sync if
-/// you tweak the row geometry.
+/// Geometry comes from the precomputed `rows` slice rather than being
+/// recalculated here, so the click hit-tester in fence_window sees the
+/// same per-row rects this paints.
 #[allow(clippy::too_many_arguments)]
 unsafe fn draw_todo_list(
     dc: &ID2D1DeviceContext,
-    fence: &dg_core::fence::Fence,
+    fence: &Fence,
+    layout: &TodoLayout,
+    rows: &[TodoRowGeom],
+    dwrite: &IDWriteFactory,
+    text_format: &IDWriteTextFormat,
+    body_brush: &ID2D1SolidColorBrush,
     ox: f32,
     oy: f32,
     title_h: f32,
     w: f32,
     h: f32,
-    body_brush: &ID2D1SolidColorBrush,
-    text_format: Option<&IDWriteTextFormat>,
 ) -> windows::core::Result<()> {
-    let layout = TodoLayout::from_fence(fence);
-    // The Y in `TodoLayout::top` is measured from the fence's logical
-    // origin; draw uses an explicit title strip height of `title_h`
-    // here (which already adds its own 4-DIP gap below it). Honor
-    // whichever produces a larger top so a smaller title font doesn't
-    // clip text into the title.
-    let row_top = (layout.top).max(title_h + 4.0);
+    let row_top = layout.top.max(title_h + 4.0);
     let bottom = h - 4.0;
 
-    // Empty-state placeholder.
-    if fence.note_items.is_empty()
-        && let Some(fmt) = text_format
-    {
+    // Empty-state hint. The caller already filtered out the `text` mode,
+    // so an empty `note_items` here means a brand-new TODO fence.
+    if fence.note_items.is_empty() {
         let hint = dg_locales::t(dg_locales::NOTE_TODO_EDIT_HINT);
         let hint_u16: Vec<u16> = hint.encode_utf16().collect();
         let hint_rect = D2D_RECT_F {
             left: layout.left + ox,
             top: row_top + oy,
-            right: w - layout.left + ox,
+            right: w - layout.right_inset + ox,
             bottom: bottom + oy,
         };
         unsafe {
             dc.DrawText(
                 &hint_u16,
-                fmt,
+                text_format,
                 &hint_rect,
                 body_brush,
                 D2D1_DRAW_TEXT_OPTIONS_NONE,
@@ -442,7 +483,14 @@ unsafe fn draw_todo_list(
         return Ok(());
     }
 
-    // Reusable brushes (created once per draw).
+    let dwrite_align = match layout.align {
+        TodoAlign::Left => DWRITE_TEXT_ALIGNMENT_LEADING,
+        TodoAlign::Center => DWRITE_TEXT_ALIGNMENT_CENTER,
+        TodoAlign::Right => DWRITE_TEXT_ALIGNMENT_TRAILING,
+    };
+
+    // Brushes created once per draw — D2D brushes are cheap but not
+    // free, and we redo this on every frame already.
     let box_outline: ID2D1SolidColorBrush = unsafe {
         dc.CreateSolidColorBrush(
             &D2D1_COLOR_F {
@@ -476,14 +524,26 @@ unsafe fn draw_todo_list(
             None,
         )?
     };
+    // Faded twin of the body color for the struck-through row label.
+    let body_color = parse_text_color(&fence.text_color);
+    let faded_color = D2D1_COLOR_F {
+        a: body_color.a * 0.55,
+        ..body_color
+    };
+    let faded_brush: ID2D1SolidColorBrush =
+        unsafe { dc.CreateSolidColorBrush(&faded_color, None)? };
 
-    for (i, it) in fence.note_items.iter().enumerate() {
-        let row_y = row_top + (i as f32) * layout.row_h;
-        if row_y >= bottom {
-            break; // Stop drawing rows that would spill past the fence body.
+    for (it, geom) in fence.note_items.iter().zip(rows.iter()) {
+        // Drop rows that start past the bottom of the body; rows
+        // themselves may overflow slightly (last row clipped by the
+        // surface) which is OK — that mirrors how shortcut fences
+        // behave when there are too many icons to fit.
+        if geom.y_top >= bottom {
+            break;
         }
-        let cx = layout.left + ox;
-        let cy = row_y + (layout.row_h - layout.checkbox_size) / 2.0 + oy;
+
+        // Checkbox.
+        let (cx, cy) = (geom.checkbox.0 + ox, geom.checkbox.1 + oy);
         let box_rect = D2D_RECT_F {
             left: cx,
             top: cy,
@@ -506,58 +566,33 @@ unsafe fn draw_todo_list(
             }
         }
 
-        if let Some(fmt) = text_format {
-            let text_left = cx + layout.checkbox_size + layout.checkbox_text_gap;
-            let text_rect = D2D_RECT_F {
-                left: text_left,
-                top: row_y + oy,
-                right: w - 8.0 + ox,
-                bottom: row_y + layout.row_h + oy,
-            };
-            let text_u16: Vec<u16> = it.text.encode_utf16().collect();
-            // Checked rows get a faded label so they recede visually.
-            let row_brush: ID2D1SolidColorBrush = if it.checked {
-                unsafe {
-                    dc.CreateSolidColorBrush(
-                        &D2D1_COLOR_F {
-                            r: 1.0,
-                            g: 1.0,
-                            b: 1.0,
-                            a: 0.55,
-                        },
-                        None,
-                    )?
-                }
-            } else {
-                body_brush.clone()
-            };
-            unsafe {
-                dc.DrawText(
-                    &text_u16,
-                    fmt,
-                    &text_rect,
-                    &row_brush,
-                    D2D1_DRAW_TEXT_OPTIONS_NONE,
-                    DWRITE_MEASURING_MODE_NATURAL,
-                );
-            }
-            // Strike-through line for checked rows. Drawn near the
-            // vertical middle of the label area so it lands on the
-            // text body regardless of font size.
-            if it.checked {
-                let strike_y = row_y + layout.row_h * 0.55 + oy;
-                let pt1 = windows_numerics::Vector2 {
-                    X: text_left,
-                    Y: strike_y,
+        // Text — built as a per-row IDWriteTextLayout so the
+        // strikethrough decoration runs through each wrapped line up
+        // to the last glyph (instead of being drawn manually across
+        // the row width).
+        let text_u16: Vec<u16> = it.text.encode_utf16().collect();
+        let max_w = geom.text_w.max(1.0);
+        let max_h = geom.height.max(layout.font_size * 1.3);
+        let text_layout: IDWriteTextLayout =
+            unsafe { dwrite.CreateTextLayout(&text_u16, text_format, max_w, max_h)? };
+        unsafe {
+            text_layout.SetTextAlignment(dwrite_align)?;
+            if it.checked && !text_u16.is_empty() {
+                let range = DWRITE_TEXT_RANGE {
+                    startPosition: 0,
+                    length: text_u16.len() as u32,
                 };
-                let pt2 = windows_numerics::Vector2 {
-                    X: w - 8.0 + ox,
-                    Y: strike_y,
-                };
-                unsafe {
-                    dc.DrawLine(pt1, pt2, &row_brush, 1.0, None);
-                }
+                text_layout.SetStrikethrough(true, range)?;
             }
+        }
+
+        let origin = windows_numerics::Vector2 {
+            X: geom.text_x + ox,
+            Y: geom.y_top + oy,
+        };
+        let row_brush: &ID2D1SolidColorBrush = if it.checked { &faded_brush } else { body_brush };
+        unsafe {
+            dc.DrawTextLayout(origin, &text_layout, row_brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
         }
     }
 
@@ -567,11 +602,7 @@ unsafe fn draw_todo_list(
 /// Paint a simple two-segment checkmark glyph inside the checked box.
 /// Stays geometric (not a font) so it scales with the box size and
 /// looks the same on every machine.
-unsafe fn draw_checkmark(
-    dc: &ID2D1DeviceContext,
-    rect: &D2D_RECT_F,
-    brush: &ID2D1SolidColorBrush,
-) {
+unsafe fn draw_checkmark(dc: &ID2D1DeviceContext, rect: &D2D_RECT_F, brush: &ID2D1SolidColorBrush) {
     let cx = rect.left;
     let cy = rect.top;
     let w = rect.right - rect.left;

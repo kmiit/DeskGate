@@ -118,6 +118,7 @@ pub const NEW_TODO_TITLE: &str = "new_todo_title";
 
 // Title alignment
 pub const CUSTOMIZE_TITLE_ALIGN: &str = "customize.title_align";
+pub const CUSTOMIZE_NOTE_ALIGN: &str = "customize.note_align";
 pub const ALIGN_LEFT: &str = "align.left";
 pub const ALIGN_CENTER: &str = "align.center";
 pub const ALIGN_RIGHT: &str = "align.right";

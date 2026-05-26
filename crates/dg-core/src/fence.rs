@@ -39,6 +39,9 @@ fn default_empty_note_items() -> Vec<NoteItem> {
 fn default_note_mode() -> String {
     "text".into()
 }
+fn default_note_align() -> String {
+    "Left".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fence {
@@ -146,6 +149,12 @@ pub struct Fence {
     // single row with its own checked state. Used when note_mode == "todo".
     #[serde(default = "default_empty_note_items", rename = "NoteItems")]
     pub note_items: Vec<NoteItem>,
+
+    // Horizontal alignment of the note body — "Left", "Center", "Right".
+    // For TODO mode, right alignment also moves the checkbox column to
+    // the right edge so the layout reads correctly RTL-style.
+    #[serde(default = "default_note_align", rename = "NoteTextAlign")]
+    pub note_text_align: String,
 
     // Blur / opacity (Rust extension fields).
     #[serde(default = "default_true", rename = "BlurEnabled")]
