@@ -103,39 +103,142 @@ impl IDropTarget_Impl for FenceDropTarget_Impl {
         let target_hwnd = self.hwnd;
         let _ = unsafe {
             crate::app::with_state_mut(|s| -> windows::core::Result<()> {
-                if let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == target_hwnd) {
-                    for path in &paths {
-                        let p = std::path::Path::new(path);
-                        let is_folder = p.is_dir();
-                        let lower = path.to_ascii_lowercase();
-                        let is_link = lower.ends_with(".lnk") || lower.ends_with(".url");
-                        let display = p
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("")
-                            .to_string();
-                        fw.fence_data.items.push(FenceItem {
-                            filename: path.clone(),
-                            display_name: display,
-                            is_folder,
-                            is_link,
-                            display_order: fw.fence_data.items.len() as i32,
-                            arguments: None,
-                        });
+                let profile_dir = s.config.config_dir.clone();
+                let fence_id = {
+                    let Some(fw) = s.fences.iter().find(|f| f.hwnd == target_hwnd) else {
+                        return Ok(());
+                    };
+                    fw.fence_data.id.clone()
+                };
+                for path in &paths {
+                    // Cross-fence classification. A drop whose source
+                    // path lives under `<profile>/items/<other_id>/` is
+                    // the user dragging an icon out of one fence and
+                    // into a different one — we move the file into our
+                    // own storage and inherit the source item's
+                    // OriginalPath so later remove/delete still restores
+                    // to the user's original desktop location. A drop
+                    // whose source is in OUR own storage (same fence
+                    // drag-out → drag-back) is a no-op.
+                    let in_any_storage = crate::storage::is_inside_storage(&profile_dir, path);
+                    let same_fence = in_any_storage && {
+                        let parent = std::path::Path::new(path).parent();
+                        let our_dir = crate::storage::fence_storage(&profile_dir, &fence_id);
+                        parent.is_some_and(|p| {
+                            crate::storage::paths_equal(
+                                &p.to_string_lossy(),
+                                &our_dir.to_string_lossy(),
+                            )
+                        })
+                    };
+                    if same_fence {
+                        continue;
                     }
+
+                    // For cross-fence drops, look up the source item in
+                    // the other fence's config so we can carry its
+                    // original_path forward. Done BEFORE the move (and
+                    // BEFORE taking a &mut on the destination fence) so
+                    // we can read `s.config.fences` immutably.
+                    let inherited_orig: Option<String> = if in_any_storage {
+                        let mut found = None;
+                        for fence in &s.config.fences {
+                            if fence.id == fence_id {
+                                continue;
+                            }
+                            if let Some(it) = fence
+                                .items
+                                .iter()
+                                .find(|it| crate::storage::paths_equal(&it.filename, path))
+                            {
+                                found = it.original_path.clone();
+                                break;
+                            }
+                        }
+                        found
+                    } else {
+                        None
+                    };
+
+                    // Dedup against the destination fence's existing
+                    // items: skip if the same source path / original
+                    // path is already represented.
+                    let already = {
+                        let Some(fw) = s.fences.iter().find(|f| f.hwnd == target_hwnd) else {
+                            return Ok(());
+                        };
+                        fw.fence_data.items.iter().any(|it| {
+                            crate::storage::paths_equal(&it.filename, path)
+                                || it
+                                    .original_path
+                                    .as_deref()
+                                    .is_some_and(|op| crate::storage::paths_equal(op, path))
+                        })
+                    };
+                    if already {
+                        continue;
+                    }
+
+                    // Storage decision:
+                    //   - cross-fence: move file into our storage,
+                    //     carry inherited OriginalPath.
+                    //   - desktop:    move file into our storage,
+                    //     set OriginalPath = source path.
+                    //   - elsewhere:  leave file in place, no OriginalPath.
+                    let (filename, original_path) = if in_any_storage {
+                        match crate::storage::move_into_storage(&profile_dir, &fence_id, path) {
+                            Ok(new_path) => {
+                                (new_path.to_string_lossy().into_owned(), inherited_orig)
+                            }
+                            Err(e) => {
+                                eprintln!("[dg] cross-fence move failed: {}", e);
+                                continue;
+                            }
+                        }
+                    } else if crate::storage::is_on_desktop(path) {
+                        match crate::storage::move_into_storage(&profile_dir, &fence_id, path) {
+                            Ok(new_path) => {
+                                (new_path.to_string_lossy().into_owned(), Some(path.clone()))
+                            }
+                            Err(e) => {
+                                eprintln!("[dg] move_into_storage failed: {}", e);
+                                (path.clone(), None)
+                            }
+                        }
+                    } else {
+                        (path.clone(), None)
+                    };
+
+                    let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == target_hwnd) else {
+                        return Ok(());
+                    };
+                    let p = std::path::Path::new(&filename);
+                    let is_folder = p.is_dir();
+                    let lower = filename.to_ascii_lowercase();
+                    let is_link = lower.ends_with(".lnk") || lower.ends_with(".url");
+                    let display = p
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    fw.fence_data.items.push(FenceItem {
+                        filename,
+                        display_name: display,
+                        is_folder,
+                        is_link,
+                        display_order: fw.fence_data.items.len() as i32,
+                        arguments: None,
+                        original_path,
+                    });
+                }
+                if let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == target_hwnd) {
                     fw.d2d.icon_cache.invalidate();
                     fw.render()?;
-                    // Mirror into config.fences so save works.
-                    if let Some(cf) = s
-                        .config
-                        .fences
-                        .iter_mut()
-                        .find(|f| f.id == fw.fence_data.id)
-                    {
+                    if let Some(cf) = s.config.fences.iter_mut().find(|f| f.id == fence_id) {
                         cf.items = fw.fence_data.items.clone();
                     }
-                    let _ = s.config.save_fences();
                 }
+                let _ = s.config.save_fences();
                 Ok(())
             })
         };

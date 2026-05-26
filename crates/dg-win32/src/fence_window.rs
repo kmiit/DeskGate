@@ -630,7 +630,7 @@ unsafe extern "system" fn fence_wndproc(
             }
         }
         WM_MOUSEMOVE => {
-            // Two roles depending on per-fence drag state:
+            // Three roles depending on per-fence drag state:
             //   1. drag_pending → not yet a drag. Promote into drag_render
             //      once the cursor has moved past SM_CXDRAG / SM_CYDRAG;
             //      compute grab_offset so the floating icon sticks at
@@ -638,21 +638,50 @@ unsafe extern "system" fn fence_wndproc(
             //      TIMER_ID_DRAG ticker that drives the displacement
             //      animation at ~60 fps. No render here — the timer
             //      paints the first frame on its next tick.
-            //   2. drag_render active → just refresh cursor + target.
-            //      `set_target` snapshots the in-flight slot positions
-            //      so a new animation eases from "wherever icons are
-            //      right now" instead of teleporting.
+            //   2. drag_render active, cursor still inside the fence →
+            //      just refresh cursor + target. `set_target` snapshots
+            //      the in-flight slot positions so a new animation
+            //      eases from "wherever icons are right now" instead of
+            //      teleporting.
+            //   3. drag_render active, cursor moved OUTSIDE the fence's
+            //      client rect → promote into an OLE drag-out via
+            //      DoDragDrop so the user can drop the file onto the
+            //      desktop, another Explorer window, or another app.
+            //      Cancels the local reorder drag before handing off.
             let lx = (lparam.0 as i32) as i16 as i32;
             let ly = ((lparam.0 as i32) >> 16) as i16 as i32;
-            unsafe {
+            // Decide outcome inside one borrow, then act outside it —
+            // DoDragDrop is modal and spins its own message pump, so we
+            // mustn't be holding the AppState borrow when we call it.
+            let drag_out_path = unsafe {
                 crate::app::with_state_mut(|s| {
-                    let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == hwnd) else {
-                        return;
-                    };
+                    let fw = s.fences.iter_mut().find(|f| f.hwnd == hwnd)?;
                     let dpi = fw.d2d.dpi;
                     let cursor_dip = (px_to_dip(lx, dpi) as f32, px_to_dip(ly, dpi) as f32);
 
                     if fw.drag_render.is_some() {
+                        // Cursor outside the fence's client rect → hand
+                        // off to OLE so the user can drop on desktop /
+                        // another window / another fence.
+                        let mut crect = RECT::default();
+                        let _ = GetClientRect(hwnd, &mut crect);
+                        let outside = lx < 0 || ly < 0 || lx >= crect.right || ly >= crect.bottom;
+                        if outside {
+                            let src_idx = fw.drag_render.as_ref().map(|d| d.src).unwrap_or(0);
+                            let src_path = fw
+                                .fence_data
+                                .items
+                                .get(src_idx)
+                                .map(|it| it.filename.clone());
+                            // Drop local-drag state and timer so the
+                            // floating-icon paint doesn't fight OLE.
+                            fw.drag_render = None;
+                            fw.drag_pending = None;
+                            let _ = KillTimer(Some(hwnd), TIMER_ID_DRAG);
+                            let _ = ReleaseCapture();
+                            let _ = fw.render();
+                            return src_path.map(|p| (p, src_idx));
+                        }
                         let new_target = fw.hit_test_icon(lx, ly);
                         let items_len = fw.fence_data.items.len();
                         let now = windows::Win32::System::SystemInformation::GetTickCount();
@@ -668,7 +697,7 @@ unsafe extern "system" fn fence_wndproc(
                         if needs_render {
                             let _ = fw.render();
                         }
-                        return;
+                        return None;
                     }
 
                     if let Some((idx, sx, sy)) = fw.drag_pending {
@@ -706,7 +735,55 @@ unsafe extern "system" fn fence_wndproc(
                             let _ = fw.render();
                         }
                     }
-                });
+                    None
+                })
+                .flatten()
+            };
+
+            if let Some((path, src_idx)) = drag_out_path {
+                let result = crate::drag_source::start_drag_out(&path);
+                // After DoDragDrop returns, reconcile fence state. The
+                // item index captured at hand-off may have shifted if
+                // somebody else mutated the items list during the modal
+                // call, so re-locate by path before mutating.
+                unsafe {
+                    crate::app::with_state_mut(|s| {
+                        let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == hwnd) else {
+                            return;
+                        };
+                        match result {
+                            crate::drag_source::DragOutResult::Moved => {
+                                let idx = fw
+                                    .fence_data
+                                    .items
+                                    .iter()
+                                    .position(|it| it.filename == path)
+                                    .unwrap_or(src_idx);
+                                if idx < fw.fence_data.items.len() {
+                                    fw.fence_data.items.remove(idx);
+                                    fw.d2d.icon_cache.invalidate();
+                                    let _ = fw.render();
+                                    let id = fw.fence_data.id.clone();
+                                    let items = fw.fence_data.items.clone();
+                                    if let Some(cf) =
+                                        s.config.fences.iter_mut().find(|f| f.id == id)
+                                    {
+                                        cf.items = items;
+                                    }
+                                    let _ = s.config.save_fences();
+                                }
+                            }
+                            crate::drag_source::DragOutResult::Copied
+                            | crate::drag_source::DragOutResult::Cancelled => {
+                                // No state change — but the floating
+                                // ghost was on screen until DoDragDrop
+                                // returned. Repaint so the fence
+                                // shows the natural layout again.
+                                let _ = fw.render();
+                            }
+                        }
+                    });
+                }
             }
         }
         WM_LBUTTONUP => {
@@ -1154,7 +1231,18 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                     && let Some(idx) = item_idx
                     && idx < fw.fence_data.items.len()
                 {
-                    fw.fence_data.items.remove(idx);
+                    let removed = fw.fence_data.items.remove(idx);
+                    // If we moved this file into our storage when it was
+                    // dropped from the desktop, move it back to its
+                    // original location now that the user has pulled it
+                    // out of the fence. Failure leaves it in storage —
+                    // better than losing the file.
+                    if let Some(orig) = removed.original_path.as_deref()
+                        && let Err(e) =
+                            crate::storage::move_back_to_original(&removed.filename, orig)
+                    {
+                        eprintln!("[dg] restore on remove failed: {}", e);
+                    }
                     fw.d2d.icon_cache.invalidate();
                     let _ = fw.render();
                     let id = fw.fence_data.id.clone();
@@ -1225,8 +1313,22 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                 crate::app::with_state_mut(|s| {
                     if let Some(pos) = s.fences.iter().position(|f| f.hwnd == hwnd) {
                         let id = s.fences[pos].fence_data.id.clone();
+                        let profile_dir = s.config.config_dir.clone();
+                        // Restore any items we moved into storage so the
+                        // user's files don't disappear with the fence.
+                        for it in &s.fences[pos].fence_data.items {
+                            if let Some(orig) = it.original_path.as_deref()
+                                && let Err(e) =
+                                    crate::storage::move_back_to_original(&it.filename, orig)
+                            {
+                                eprintln!("[dg] restore on fence delete failed: {}", e);
+                            }
+                        }
                         s.fences.remove(pos);
                         s.config.fences.retain(|f| f.id != id);
+                        // Best-effort cleanup of the now-empty per-fence
+                        // storage directory.
+                        crate::storage::try_remove_fence_storage(&profile_dir, &id);
                         let _ = s.config.save_fences();
                     }
                 });

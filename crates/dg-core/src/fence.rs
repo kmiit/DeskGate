@@ -170,6 +170,15 @@ pub struct FenceItem {
 
     #[serde(default, rename = "Arguments")]
     pub arguments: Option<String>,
+
+    // Original location of the file when it was dropped. `Some(p)` means
+    // DeskGate moved the file from `p` into its private items storage so
+    // the desktop entry disappears entirely (matches Stardock Fences).
+    // On remove/delete we owe the user a move back to `p`. `None` = the
+    // file was dropped from somewhere we don't manage (a non-desktop
+    // location); we left it in place and won't touch it on cleanup.
+    #[serde(default, rename = "OriginalPath")]
+    pub original_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
