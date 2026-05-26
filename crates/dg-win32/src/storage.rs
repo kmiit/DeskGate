@@ -188,9 +188,9 @@ pub fn move_into_storage(profile_dir: &Path, fence_id: &str, src: &str) -> io::R
     // First try the shell (handles folders + cross-volume); fall back to
     // fs::rename only if the shell path didn't work, since rename can't
     // handle cross-volume folders.
-    if let Err(e) = shell_move(src_path, &dest_dir, rename.as_deref()) {
+    if let Err(_e) = shell_move(src_path, &dest_dir, rename.as_deref()) {
         #[cfg(debug_assertions)]
-        eprintln!("[dg] shell move failed, trying fs::rename: {}", e);
+        eprintln!("[dg] shell move failed, trying fs::rename: {}", _e);
         std::fs::rename(src_path, &target)?;
     }
     Ok(target)
@@ -221,9 +221,9 @@ pub fn move_back_to_original(stored: &str, original: &str) -> io::Result<()> {
         .file_name()
         .and_then(|s| s.to_str())
         .map(String::from);
-    if let Err(e) = shell_move(stored_path, parent, rename.as_deref()) {
+    if let Err(_e) = shell_move(stored_path, parent, rename.as_deref()) {
         #[cfg(debug_assertions)]
-        eprintln!("[dg] shell move-back failed, trying fs::rename: {}", e);
+        eprintln!("[dg] shell move-back failed, trying fs::rename: {}", _e);
         std::fs::rename(stored_path, &target)?;
     }
     Ok(())

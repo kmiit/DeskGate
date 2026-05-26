@@ -207,11 +207,7 @@ unsafe fn set_blob(dataobj: &IDataObject, cf: u16, data: &[u8]) -> Result<()> {
 /// Build a `DROPDESCRIPTION` from a template ("Open with %1") and an
 /// insert ("Notepad"). Shell substitutes `%1` with the insert at paint
 /// time, so the template must keep that literal.
-fn build_drop_description(
-    image: DROPIMAGETYPE,
-    message: &str,
-    insert: &str,
-) -> DROPDESCRIPTION {
+fn build_drop_description(image: DROPIMAGETYPE, message: &str, insert: &str) -> DROPDESCRIPTION {
     let mut desc = DROPDESCRIPTION {
         r#type: image,
         szMessage: [0u16; 260],
@@ -553,10 +549,9 @@ impl IDropTarget_Impl for FenceDropTarget_Impl {
                         }
                     } else if crate::storage::is_on_desktop(path) {
                         match crate::storage::move_into_storage(&profile_dir, &fence_id, path) {
-                            Ok(new_path) => (
-                                new_path.to_string_lossy().into_owned(),
-                                Some(path.clone()),
-                            ),
+                            Ok(new_path) => {
+                                (new_path.to_string_lossy().into_owned(), Some(path.clone()))
+                            }
                             Err(e) => {
                                 eprintln!("[dg] move_into_storage failed: {}", e);
                                 (path.clone(), None)
