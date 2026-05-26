@@ -931,6 +931,7 @@ fn handle_nchittest(hwnd: HWND, lparam: LPARAM) -> LRESULT {
 
     let dpi = window_dpi(hwnd);
     let border = dip_to_px(6.0, dpi);
+    let corner_size = dip_to_px(12.0, dpi);
     let grip_size = dip_to_px(16.0, dpi);
     let title_h = dip_to_px(TITLE_H_DIP as f64, dpi);
     let w = rect.right - rect.left;
@@ -938,29 +939,45 @@ fn handle_nchittest(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     let lx = x - rect.left;
     let ly = y - rect.top;
 
-    if !locked && lx > w - grip_size && ly > h - grip_size {
-        return LRESULT(HTBOTTOMRIGHT as isize);
-    }
-    if ly >= 0 && ly < title_h {
-        return if locked {
-            LRESULT(HTCLIENT as isize)
-        } else {
-            LRESULT(HTCAPTION as isize)
-        };
-    }
     if !locked {
-        if lx < border {
-            return LRESULT(HTLEFT as isize);
+        // Corners first so a grab near the very corner of the title bar
+        // still produces a diagonal resize, not "move". Bottom-right
+        // keeps the historic 16-dip grip — a touch larger than the other
+        // corners so the painted grip stays comfortably grabable.
+        if lx < corner_size && ly < corner_size {
+            return LRESULT(HTTOPLEFT as isize);
         }
-        if lx > w - border {
-            return LRESULT(HTRIGHT as isize);
+        if lx > w - corner_size && ly < corner_size {
+            return LRESULT(HTTOPRIGHT as isize);
         }
+        if lx < corner_size && ly > h - corner_size {
+            return LRESULT(HTBOTTOMLEFT as isize);
+        }
+        if lx > w - grip_size && ly > h - grip_size {
+            return LRESULT(HTBOTTOMRIGHT as isize);
+        }
+        // Top edge must precede the HTCAPTION branch — otherwise the
+        // title bar would always swallow the gesture.
         if ly < border {
             return LRESULT(HTTOP as isize);
         }
         if ly > h - border {
             return LRESULT(HTBOTTOM as isize);
         }
+        if lx < border {
+            return LRESULT(HTLEFT as isize);
+        }
+        if lx > w - border {
+            return LRESULT(HTRIGHT as isize);
+        }
+    }
+
+    if ly >= 0 && ly < title_h {
+        return if locked {
+            LRESULT(HTCLIENT as isize)
+        } else {
+            LRESULT(HTCAPTION as isize)
+        };
     }
 
     LRESULT(HTCLIENT as isize)
