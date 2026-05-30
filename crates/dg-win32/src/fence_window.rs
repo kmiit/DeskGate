@@ -4,6 +4,7 @@ use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::*;
 use windows::Win32::System::Ole::*;
+use windows::Win32::System::Threading::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -1839,31 +1840,74 @@ pub(crate) fn launch_item_with_files(item: &FenceItem, extra_files: &[String]) {
         };
     }
 
+    // Build command line: `"target" args`
+    let cmdline = if args.is_empty() {
+        format!("\"{}\"", target)
+    } else {
+        format!("\"{}\" {}", target, args)
+    };
+
     let wtarget: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
     let wargs: Vec<u16> = args.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut wcmdline: Vec<u16> = cmdline.encode_utf16().chain(std::iter::once(0)).collect();
     let wdir: Vec<u16> = working_dir
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
-    let verb: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
 
     unsafe {
-        let _ = ShellExecuteW(
-            None,
-            PCWSTR(verb.as_ptr()),
+        let mut si: STARTUPINFOW = std::mem::zeroed();
+        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+
+        // Use CreateProcessW with flags that detach the child from the
+        // parent's process tree so it shows as an independent process in
+        // Task Manager instead of a child of DeskGate.
+        let flags = CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS;
+
+        let ok = CreateProcessW(
             PCWSTR(wtarget.as_ptr()),
-            if args.is_empty() {
-                PCWSTR::null()
-            } else {
-                PCWSTR(wargs.as_ptr())
-            },
+            Some(PWSTR(wcmdline.as_mut_ptr())),
+            None,
+            None,
+            false,
+            flags,
+            None,
             if working_dir.is_empty() {
                 PCWSTR::null()
             } else {
                 PCWSTR(wdir.as_ptr())
             },
-            SW_SHOWNORMAL,
-        );
+            &si,
+            &mut pi,
+        )
+        .is_ok();
+
+        if ok {
+            let _ = CloseHandle(pi.hProcess);
+            let _ = CloseHandle(pi.hThread);
+        } else {
+            // Fallback to ShellExecuteW for targets that need shell
+            // associations (documents, URLs, protocol handlers, etc.)
+            // or require UAC elevation.
+            let verb: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+            let _ = ShellExecuteW(
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(wtarget.as_ptr()),
+                if args.is_empty() {
+                    PCWSTR::null()
+                } else {
+                    PCWSTR(wargs.as_ptr())
+                },
+                if working_dir.is_empty() {
+                    PCWSTR::null()
+                } else {
+                    PCWSTR(wdir.as_ptr())
+                },
+                SW_SHOWNORMAL,
+            );
+        }
     }
 }
 
