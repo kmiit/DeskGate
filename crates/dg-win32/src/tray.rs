@@ -173,6 +173,10 @@ impl TrayIcon {
             let _ = DestroyMenu(menu);
         }
     }
+
+    pub fn hwnd(&self) -> HWND {
+        self.hwnd
+    }
 }
 
 impl Drop for TrayIcon {

@@ -1247,10 +1247,9 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
     let mut screen_pt = POINT { x: lx, y: ly };
     unsafe {
         let _ = ClientToScreen(hwnd, &mut screen_pt);
-        // Deliberately NOT calling SetForegroundWindow here: it would
-        // raise the fence above all its siblings just for showing a menu.
-        // TrackPopupMenu handles menu activation on its own.
     }
+
+    let menu_owner = unsafe { crate::app::with_state(|s| s.tray.hwnd()).unwrap_or(hwnd) };
 
     let id = unsafe {
         let menu = match CreatePopupMenu() {
@@ -1316,16 +1315,18 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
             append_menu_key(menu, MF_STRING, ID_FENCE_DELETE, loc::FENCE_DELETE);
         }
 
+        let _ = SetForegroundWindow(menu_owner);
         let id = TrackPopupMenu(
             menu,
             TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
             screen_pt.x,
             screen_pt.y,
             None,
-            hwnd,
+            menu_owner,
             None,
         );
         let _ = DestroyMenu(menu);
+        let _ = PostMessageW(Some(menu_owner), WM_NULL, WPARAM(0), LPARAM(0));
         id
     };
 
