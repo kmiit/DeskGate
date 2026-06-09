@@ -105,25 +105,10 @@ impl TrayIcon {
                 Ok(m) => m,
                 Err(_) => return,
             };
-            let _ = AppendMenuW(
-                menu,
-                MF_STRING,
-                ID_TRAY_NEW_FENCE,
-                loc::tw!(loc::TRAY_NEW_FENCE),
-            );
-            let _ = AppendMenuW(
-                menu,
-                MF_STRING,
-                ID_TRAY_NEW_NOTE,
-                loc::tw!(loc::TRAY_NEW_NOTE),
-            );
-            let _ = AppendMenuW(
-                menu,
-                MF_STRING,
-                ID_TRAY_NEW_TODO,
-                loc::tw!(loc::TRAY_NEW_TODO),
-            );
-            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_RELOAD, loc::tw!(loc::TRAY_RELOAD));
+            append_menu_key(menu, MF_STRING, ID_TRAY_NEW_FENCE, loc::TRAY_NEW_FENCE);
+            append_menu_key(menu, MF_STRING, ID_TRAY_NEW_NOTE, loc::TRAY_NEW_NOTE);
+            append_menu_key(menu, MF_STRING, ID_TRAY_NEW_TODO, loc::TRAY_NEW_TODO);
+            append_menu_key(menu, MF_STRING, ID_TRAY_RELOAD, loc::TRAY_RELOAD);
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
 
             // Read settings once, build submenus from a stable snapshot.
@@ -138,27 +123,27 @@ impl TrayIcon {
             .unwrap_or((60, FenceDefaults::default()));
 
             let fps_menu = build_anim_fps_menu(anim_fps);
-            let _ = AppendMenuW(
+            append_menu_key(
                 menu,
-                MF_POPUP,
+                MF_POPUP | MF_STRING,
                 fps_menu.0 as usize,
-                loc::tw!(loc::TRAY_ANIM_FPS),
+                loc::TRAY_ANIM_FPS,
             );
 
             let defaults_menu = build_defaults_menu(&defaults);
-            let _ = AppendMenuW(
+            append_menu_key(
                 menu,
-                MF_POPUP,
+                MF_POPUP | MF_STRING,
                 defaults_menu.0 as usize,
-                loc::tw!(loc::TRAY_DEFAULT_SETTINGS),
+                loc::TRAY_DEFAULT_SETTINGS,
             );
 
             let lang_menu = build_lang_menu();
-            let _ = AppendMenuW(
+            append_menu_key(
                 menu,
-                MF_POPUP,
+                MF_POPUP | MF_STRING,
                 lang_menu.0 as usize,
-                loc::tw!(loc::LANG_LABEL),
+                loc::LANG_LABEL,
             );
 
             let autostart_flags = if crate::autostart::is_enabled() {
@@ -166,15 +151,15 @@ impl TrayIcon {
             } else {
                 MF_STRING
             };
-            let _ = AppendMenuW(
+            append_menu_key(
                 menu,
                 autostart_flags,
                 ID_TRAY_AUTOSTART,
-                loc::tw!(loc::TRAY_AUTOSTART),
+                loc::TRAY_AUTOSTART,
             );
 
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_EXIT, loc::tw!(loc::TRAY_EXIT));
+            append_menu_key(menu, MF_STRING, ID_TRAY_EXIT, loc::TRAY_EXIT);
 
             let _ = TrackPopupMenu(
                 menu,
@@ -212,8 +197,7 @@ fn build_anim_fps_menu(current_fps: i32) -> HMENU {
             } else {
                 MF_STRING
             };
-            let w = loc::tw(crate::fence_window::fps_label(*val));
-            let _ = AppendMenuW(menu, flags, id, PCWSTR(w.as_ptr()));
+            append_menu_text(menu, flags, id, crate::fence_window::fps_label(*val));
         }
         menu
     }
@@ -239,11 +223,19 @@ fn build_lang_menu() -> HMENU {
             } else {
                 MF_STRING
             };
-            let w = loc::tw(label_key);
-            let _ = AppendMenuW(menu, flags, id, PCWSTR(w.as_ptr()));
+            append_menu_key(menu, flags, id, label_key);
         }
         menu
     }
+}
+
+unsafe fn append_menu_key(menu: HMENU, flags: MENU_ITEM_FLAGS, id: usize, key: &'static str) {
+    append_menu_text(menu, flags, id, loc::t(key));
+}
+
+unsafe fn append_menu_text(menu: HMENU, flags: MENU_ITEM_FLAGS, id: usize, text: &str) {
+    let w: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let _ = unsafe { AppendMenuW(menu, flags, id, PCWSTR(w.as_ptr())) };
 }
 
 /// Apply a click in the "Default fence settings" submenu, decoded as

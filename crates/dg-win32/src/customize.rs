@@ -139,6 +139,10 @@ fn resolve_label(label: &'static str) -> &'static str {
     }
 }
 
+fn label_with_current(label_key: &'static str, current_label: &str) -> String {
+    format!("{}: {}", loc::t(label_key), current_label)
+}
+
 /// Minimal read-only view of either a per-fence `Fence` or the global
 /// `FenceDefaults`. Constructed cheaply at menu-build time; the borrow
 /// lives only for the duration of `build_customize_menu`.
@@ -227,28 +231,28 @@ pub fn build_customize_menu(
             id_base,
             KIND_BG_COLOR,
             view.bg_color,
-            loc::tw!(loc::CUSTOMIZE_BG_COLOR),
+            loc::CUSTOMIZE_BG_COLOR,
         );
         append_str_color_submenu(
             menu,
             id_base,
             KIND_BORDER_COLOR,
             view.border_color,
-            loc::tw!(loc::CUSTOMIZE_BORDER_COLOR),
+            loc::CUSTOMIZE_BORDER_COLOR,
         );
         append_str_color_submenu(
             menu,
             id_base,
             KIND_TITLE_COLOR,
             view.title_color,
-            loc::tw!(loc::CUSTOMIZE_TITLE_COLOR),
+            loc::CUSTOMIZE_TITLE_COLOR,
         );
         append_str_color_submenu(
             menu,
             id_base,
             KIND_TEXT_COLOR,
             view.text_color,
-            loc::tw!(loc::CUSTOMIZE_LABEL_COLOR),
+            loc::CUSTOMIZE_LABEL_COLOR,
         );
 
         append_int_submenu(
@@ -257,7 +261,7 @@ pub fn build_customize_menu(
             KIND_BORDER_THICK,
             BORDER_THICKNESSES,
             view.border_thick,
-            loc::tw!(loc::CUSTOMIZE_BORDER_THICK),
+            loc::CUSTOMIZE_BORDER_THICK,
         );
         append_str_submenu(
             menu,
@@ -265,7 +269,7 @@ pub fn build_customize_menu(
             KIND_ICON_SIZE,
             ICON_SIZES,
             view.icon_size,
-            loc::tw!(loc::CUSTOMIZE_ICON_SIZE),
+            loc::CUSTOMIZE_ICON_SIZE,
         );
         append_int_submenu(
             menu,
@@ -273,14 +277,14 @@ pub fn build_customize_menu(
             KIND_ICON_SPACING,
             ICON_SPACINGS,
             view.icon_spacing,
-            loc::tw!(loc::CUSTOMIZE_ICON_SPACING),
+            loc::CUSTOMIZE_ICON_SPACING,
         );
 
         append_toggle(
             menu,
             encode(id_base, KIND_BOLD_TOGGLE, 0),
             view.bold,
-            loc::tw!(loc::CUSTOMIZE_BOLD_TITLE),
+            loc::CUSTOMIZE_BOLD_TITLE,
         );
         append_str_submenu(
             menu,
@@ -288,7 +292,7 @@ pub fn build_customize_menu(
             KIND_TITLE_ALIGN,
             TITLE_ALIGNS,
             view.title_align,
-            loc::tw!(loc::CUSTOMIZE_TITLE_ALIGN),
+            loc::CUSTOMIZE_TITLE_ALIGN,
         );
         if let Some(note_align) = view.note_align {
             append_str_submenu(
@@ -297,33 +301,33 @@ pub fn build_customize_menu(
                 KIND_NOTE_ALIGN,
                 TITLE_ALIGNS,
                 note_align,
-                loc::tw!(loc::CUSTOMIZE_NOTE_ALIGN),
+                loc::CUSTOMIZE_NOTE_ALIGN,
             );
         }
         append_toggle(
             menu,
             encode(id_base, KIND_LABELS_TOGGLE, 0),
             view.labels,
-            loc::tw!(loc::CUSTOMIZE_SHOW_LABELS),
+            loc::CUSTOMIZE_SHOW_LABELS,
         );
         append_toggle(
             menu,
             encode(id_base, KIND_TEXT_OUTLINE_TOGGLE, 0),
             view.text_outline,
-            loc::tw!(loc::CUSTOMIZE_TEXT_OUTLINE),
+            loc::CUSTOMIZE_TEXT_OUTLINE,
         );
         append_toggle(
             menu,
             encode(id_base, KIND_BLUR_TOGGLE, 0),
             view.blur_enabled,
-            loc::tw!(loc::CUSTOMIZE_BG_BLUR),
+            loc::CUSTOMIZE_BG_BLUR,
         );
 
-        let _ = AppendMenuW(
+        append_menu_key(
             menu,
             MF_STRING,
             blur_radius_prompt_id,
-            loc::tw!(loc::CUSTOMIZE_BLUR_RADIUS),
+            loc::CUSTOMIZE_BLUR_RADIUS,
         );
 
         append_opacity_submenu(menu, id_base, view.bg_opacity);
@@ -337,7 +341,7 @@ unsafe fn append_str_color_submenu(
     id_base: usize,
     kind: usize,
     current: &str,
-    label: PCWSTR,
+    label_key: &'static str,
 ) {
     let sub = unsafe { CreatePopupMenu().unwrap_or_default() };
     for (i, (val, item_label)) in NAMED_COLORS.iter().enumerate() {
@@ -347,10 +351,19 @@ unsafe fn append_str_color_submenu(
         } else {
             MF_STRING
         };
-        let w = loc::tw(resolve_label(item_label));
-        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
+        append_menu_text(sub, flags, id, resolve_label(item_label));
     }
-    let _ = unsafe { AppendMenuW(parent, MF_POPUP, sub.0 as usize, label) };
+    let current_label = NAMED_COLORS
+        .iter()
+        .find(|(val, _)| val.eq_ignore_ascii_case(current))
+        .map(|(_, item_label)| resolve_label(item_label))
+        .unwrap_or(resolve_label("color.default"));
+    append_menu_text(
+        parent,
+        MF_POPUP | MF_STRING,
+        sub.0 as usize,
+        &label_with_current(label_key, current_label),
+    );
 }
 
 unsafe fn append_int_submenu(
@@ -359,7 +372,7 @@ unsafe fn append_int_submenu(
     kind: usize,
     choices: &[(i32, &'static str)],
     current: i32,
-    label: PCWSTR,
+    label_key: &'static str,
 ) {
     let sub = unsafe { CreatePopupMenu().unwrap_or_default() };
     for (i, (val, item_label)) in choices.iter().enumerate() {
@@ -369,10 +382,19 @@ unsafe fn append_int_submenu(
         } else {
             MF_STRING
         };
-        let w = loc::tw(resolve_label(item_label));
-        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
+        append_menu_text(sub, flags, id, resolve_label(item_label));
     }
-    let _ = unsafe { AppendMenuW(parent, MF_POPUP, sub.0 as usize, label) };
+    let current_label = choices
+        .iter()
+        .find(|(val, _)| *val == current)
+        .map(|(_, item_label)| resolve_label(item_label))
+        .unwrap_or("?");
+    append_menu_text(
+        parent,
+        MF_POPUP | MF_STRING,
+        sub.0 as usize,
+        &label_with_current(label_key, current_label),
+    );
 }
 
 unsafe fn append_str_submenu(
@@ -381,7 +403,7 @@ unsafe fn append_str_submenu(
     kind: usize,
     choices: &[(&'static str, &'static str)],
     current: &str,
-    label: PCWSTR,
+    label_key: &'static str,
 ) {
     let sub = unsafe { CreatePopupMenu().unwrap_or_default() };
     for (i, (val, item_label)) in choices.iter().enumerate() {
@@ -391,10 +413,19 @@ unsafe fn append_str_submenu(
         } else {
             MF_STRING
         };
-        let w = loc::tw(resolve_label(item_label));
-        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
+        append_menu_text(sub, flags, id, resolve_label(item_label));
     }
-    let _ = unsafe { AppendMenuW(parent, MF_POPUP, sub.0 as usize, label) };
+    let current_label = choices
+        .iter()
+        .find(|(val, _)| *val == current)
+        .map(|(_, item_label)| resolve_label(item_label))
+        .unwrap_or("?");
+    append_menu_text(
+        parent,
+        MF_POPUP | MF_STRING,
+        sub.0 as usize,
+        &label_with_current(label_key, current_label),
+    );
 }
 
 unsafe fn append_opacity_submenu(parent: HMENU, id_base: usize, current: f64) {
@@ -406,26 +437,37 @@ unsafe fn append_opacity_submenu(parent: HMENU, id_base: usize, current: f64) {
         } else {
             MF_STRING
         };
-        let w = loc::tw(resolve_label(item_label));
-        let _ = unsafe { AppendMenuW(sub, flags, id, PCWSTR(w.as_ptr())) };
+        append_menu_text(sub, flags, id, resolve_label(item_label));
     }
-    let _ = unsafe {
-        AppendMenuW(
-            parent,
-            MF_POPUP,
-            sub.0 as usize,
-            loc::tw!(loc::CUSTOMIZE_BG_OPACITY),
-        )
-    };
+    let current_label = BG_OPACITIES
+        .iter()
+        .find(|(val, _)| (current - val).abs() < 0.0001)
+        .map(|(_, item_label)| resolve_label(item_label))
+        .unwrap_or("?");
+    append_menu_text(
+        parent,
+        MF_POPUP | MF_STRING,
+        sub.0 as usize,
+        &label_with_current(loc::CUSTOMIZE_BG_OPACITY, current_label),
+    );
 }
 
-unsafe fn append_toggle(parent: HMENU, id: usize, on: bool, label: PCWSTR) {
+unsafe fn append_toggle(parent: HMENU, id: usize, on: bool, label_key: &'static str) {
     let flags = if on {
         MF_STRING | MF_CHECKED
     } else {
         MF_STRING
     };
-    let _ = unsafe { AppendMenuW(parent, flags, id, label) };
+    append_menu_key(parent, flags, id, label_key);
+}
+
+unsafe fn append_menu_key(parent: HMENU, flags: MENU_ITEM_FLAGS, id: usize, key: &'static str) {
+    append_menu_text(parent, flags, id, loc::t(key));
+}
+
+unsafe fn append_menu_text(parent: HMENU, flags: MENU_ITEM_FLAGS, id: usize, text: &str) {
+    let w: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let _ = unsafe { AppendMenuW(parent, flags, id, PCWSTR(w.as_ptr())) };
 }
 
 /// Resolve a color-kind value index to its stored payload ("" = inherit

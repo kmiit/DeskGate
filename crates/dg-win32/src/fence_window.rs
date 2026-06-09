@@ -1259,15 +1259,15 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
         };
 
         if let Some(_idx) = item_idx {
-            let _ = AppendMenuW(menu, MF_STRING, ID_ITEM_OPEN, loc::tw!(loc::FENCE_OPEN));
-            let _ = AppendMenuW(
+            append_menu_key(menu, MF_STRING, ID_ITEM_OPEN, loc::FENCE_OPEN);
+            append_menu_key(
                 menu,
                 MF_STRING,
                 ID_ITEM_OPEN_LOCATION,
-                loc::tw!(loc::FENCE_OPEN_LOCATION),
+                loc::FENCE_OPEN_LOCATION,
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, ID_ITEM_REMOVE, loc::tw!(loc::FENCE_REMOVE));
+            append_menu_key(menu, MF_STRING, ID_ITEM_REMOVE, loc::FENCE_REMOVE);
         } else {
             let fd = crate::app::with_state(|s| {
                 s.fences
@@ -1281,12 +1281,12 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
             // before the generic options. The generic options (roll,
             // rename, lock, customize) still apply.
             if is_note {
-                let _ = AppendMenuW(menu, MF_STRING, ID_NOTE_EDIT, loc::tw!(loc::NOTE_EDIT));
+                append_menu_key(menu, MF_STRING, ID_NOTE_EDIT, loc::NOTE_EDIT);
                 let mode_key = match fd.as_ref().map(|f| f.note_mode.as_str() == "todo") {
                     Some(true) => loc::NOTE_SWITCH_TO_TEXT,
                     _ => loc::NOTE_SWITCH_TO_TODO,
                 };
-                let _ = AppendMenuW(menu, MF_STRING, ID_NOTE_MODE_TOGGLE, loc::tw!(mode_key));
+                append_menu_key(menu, MF_STRING, ID_NOTE_MODE_TOGGLE, mode_key);
                 let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             }
 
@@ -1294,36 +1294,26 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                 Some(true) => loc::FENCE_UNROLL,
                 _ => loc::FENCE_ROLL_UP,
             };
-            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_ROLL, loc::tw!(roll_key));
-            let _ = AppendMenuW(
-                menu,
-                MF_STRING,
-                ID_FENCE_RENAME,
-                loc::tw!(loc::FENCE_RENAME),
-            );
+            append_menu_key(menu, MF_STRING, ID_FENCE_ROLL, roll_key);
+            append_menu_key(menu, MF_STRING, ID_FENCE_RENAME, loc::FENCE_RENAME);
             let lock_key = match fd.as_ref().map(|f| f.is_locked == "true") {
                 Some(true) => loc::FENCE_UNLOCK,
                 _ => loc::FENCE_LOCK,
             };
-            let _ = AppendMenuW(menu, MF_STRING, ID_FENCE_LOCK_TOGGLE, loc::tw!(lock_key));
+            append_menu_key(menu, MF_STRING, ID_FENCE_LOCK_TOGGLE, lock_key);
 
             if let Some(f) = fd.as_ref() {
                 let customize = build_customize_menu(f);
-                let _ = AppendMenuW(
+                append_menu_key(
                     menu,
-                    MF_POPUP,
+                    MF_POPUP | MF_STRING,
                     customize.0 as usize,
-                    loc::tw!(loc::FENCE_CUSTOMIZE),
+                    loc::FENCE_CUSTOMIZE,
                 );
             }
 
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(
-                menu,
-                MF_STRING,
-                ID_FENCE_DELETE,
-                loc::tw!(loc::FENCE_DELETE),
-            );
+            append_menu_key(menu, MF_STRING, ID_FENCE_DELETE, loc::FENCE_DELETE);
         }
 
         let id = TrackPopupMenu(
@@ -1531,6 +1521,15 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
 fn build_customize_menu(f: &Fence) -> HMENU {
     let view = crate::customize::CustomizeView::from(f);
     crate::customize::build_customize_menu(&view, ID_CUSTOMIZE_BASE, ID_FENCE_BLUR_RADIUS)
+}
+
+unsafe fn append_menu_key(menu: HMENU, flags: MENU_ITEM_FLAGS, id: usize, key: &'static str) {
+    append_menu_text(menu, flags, id, loc::t(key));
+}
+
+unsafe fn append_menu_text(menu: HMENU, flags: MENU_ITEM_FLAGS, id: usize, text: &str) {
+    let w: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let _ = unsafe { AppendMenuW(menu, flags, id, PCWSTR(w.as_ptr())) };
 }
 
 fn apply_customize(hwnd: HWND, code: usize) {
