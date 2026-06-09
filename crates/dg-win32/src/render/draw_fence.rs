@@ -140,6 +140,18 @@ pub fn draw_fence(
     // IDWriteTextLayouts without holding a mutable borrow on `ctx`.
     let dwrite = ctx.dwrite_factory.clone();
 
+    // Background tint sitting *on top* of the blur layer. Lower-alpha tint
+    // lets more of the blurred wallpaper show through, matching the
+    // frosted-glass look. If the tint is effectively solid, D2DContext can
+    // detach the expensive backdrop brush because it would be hidden.
+    let user_alpha = (fence.bg_opacity as f32).clamp(0.0, 1.0);
+    let bg_alpha = if fence.custom_color.is_some() {
+        (user_alpha + 0.10).min(1.0)
+    } else {
+        user_alpha
+    };
+    ctx.set_blur_tint_alpha(bg_alpha)?;
+
     unsafe {
         let surface = ctx.drawing_surface.as_ref().unwrap();
         let surface_interop: ICompositionDrawingSurfaceInterop = surface.cast()?;
@@ -170,15 +182,6 @@ pub fn draw_fence(
             a: 0.0,
         }));
 
-        // Background tint sitting *on top* of the blur layer. Lower-alpha tint
-        // lets more of the blurred wallpaper show through, matching the
-        // miuix frosted-glass look. Custom colors stay a touch more saturated.
-        let user_alpha = (fence.bg_opacity as f32).clamp(0.0, 1.0);
-        let bg_alpha = if fence.custom_color.is_some() {
-            (user_alpha + 0.10).min(1.0)
-        } else {
-            user_alpha
-        };
         let bg_color = parse_fence_color(&fence.custom_color, bg_alpha);
         let brush: ID2D1SolidColorBrush = dc.CreateSolidColorBrush(&bg_color, None)?;
 

@@ -10,7 +10,7 @@ pub fn translate(key: &'static str) -> &'static str {
         TRAY_DEFAULT_SETTINGS => "Default fence settings",
         TRAY_AUTOSTART => "Start with Windows",
         TRAY_EXIT => "Exit",
-        TRAY_DEFAULT_BLUR_PROMPT => "Default blur radius (0-150)",
+        TRAY_DEFAULT_BLUR_PROMPT => "Default blur radius (0-60)",
 
         FENCE_OPEN => "Open",
         FENCE_OPEN_LOCATION => "Open file location",
@@ -22,7 +22,7 @@ pub fn translate(key: &'static str) -> &'static str {
         FENCE_UNLOCK => "Unlock",
         FENCE_CUSTOMIZE => "Customize",
         FENCE_DELETE => "Delete fence",
-        FENCE_BLUR_PROMPT => "Blur radius (0-150)",
+        FENCE_BLUR_PROMPT => "Blur radius (0-60)",
         FENCE_RENAME_PROMPT => "Rename fence",
 
         NOTE_EDIT => "Edit content...",

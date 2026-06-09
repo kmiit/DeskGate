@@ -14,6 +14,7 @@ use crate::customize::{
     KIND_STRIDE, KIND_TEXT_COLOR, KIND_TEXT_OUTLINE_TOGGLE, KIND_TITLE_ALIGN, KIND_TITLE_COLOR,
 };
 use crate::fence_window::{ANIM_FPS_PRESETS, FenceWindow};
+use crate::render::MAX_BLUR_RADIUS;
 
 pub const TRAY_CLASS_NAME: PCWSTR = w!("DG_TRAY_CLASS");
 pub const HOTKEY_ID_TOGGLE_ALL: i32 = 1;
@@ -490,7 +491,7 @@ unsafe extern "system" fn tray_wndproc(
                         crate::modal::input(hwnd, loc::t(loc::TRAY_DEFAULT_BLUR_PROMPT), &initial)
                         && let Ok(parsed) = input.trim().parse::<f64>()
                     {
-                        let radius = parsed.clamp(0.0, 150.0);
+                        let radius = parsed.clamp(0.0, MAX_BLUR_RADIUS as f64);
                         unsafe {
                             crate::app::with_state_mut(|s| {
                                 s.config.settings.fence_defaults.blur_radius = radius;

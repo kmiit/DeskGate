@@ -10,7 +10,7 @@ pub fn translate(key: &'static str) -> &'static str {
         TRAY_DEFAULT_SETTINGS => "默认栏目设置",
         TRAY_AUTOSTART => "开机自启",
         TRAY_EXIT => "退出",
-        TRAY_DEFAULT_BLUR_PROMPT => "默认模糊半径 (0-150)",
+        TRAY_DEFAULT_BLUR_PROMPT => "默认模糊半径 (0-60)",
 
         FENCE_OPEN => "打开",
         FENCE_OPEN_LOCATION => "打开文件位置",
@@ -22,7 +22,7 @@ pub fn translate(key: &'static str) -> &'static str {
         FENCE_UNLOCK => "解锁",
         FENCE_CUSTOMIZE => "自定义",
         FENCE_DELETE => "删除栏目",
-        FENCE_BLUR_PROMPT => "模糊半径 (0-150)",
+        FENCE_BLUR_PROMPT => "模糊半径 (0-60)",
         FENCE_RENAME_PROMPT => "重命名栏目",
 
         NOTE_EDIT => "编辑内容...",

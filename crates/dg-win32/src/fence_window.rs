@@ -15,7 +15,7 @@ use windows::core::*;
 
 use crate::drop_target::FenceDropTarget;
 use crate::layout::IconLayout;
-use crate::render::{D2DContext, DragHint, draw_fence};
+use crate::render::{D2DContext, DragHint, MAX_BLUR_RADIUS, draw_fence};
 use crate::shortcut::resolve_lnk;
 use windows::Win32::UI::HiDpi::*;
 
@@ -104,7 +104,7 @@ const ID_NOTE_MODE_TOGGLE: usize = 2021;
 pub const ID_CUSTOMIZE_BASE: usize = 3000;
 
 // One-shot menu item for editing the blur radius. Uses an input dialog
-// instead of a preset list so the user can dial any value in 0..=150.
+// instead of a preset list so the user can dial any supported value.
 const ID_FENCE_BLUR_RADIUS: usize = 2005;
 
 // Global animation FPS presets. ID base is consumed by tray.rs (the
@@ -1495,7 +1495,7 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
             {
                 let trimmed = input.trim();
                 if let Ok(parsed) = trimmed.parse::<f64>() {
-                    let radius = parsed.clamp(0.0, 150.0);
+                    let radius = parsed.clamp(0.0, MAX_BLUR_RADIUS as f64);
                     unsafe {
                         crate::app::with_state_mut(|s| {
                             if let Some(fw) = s.fences.iter_mut().find(|f| f.hwnd == hwnd) {

@@ -24,6 +24,17 @@ pub const CORNER_RADIUS: f32 = 8.0;
 // testing and for the rolled-up fence height.
 pub const TITLE_H_DIP: f32 = 32.0;
 
+// User-facing blur radius in DIPs. The first 20 DIPs use only the system
+// HostBackdropBrush, which is handled by DWM's optimized backdrop path.
+// Larger values add a capped Gaussian pass for extra softness. Keeping that
+// pass off for the default blur setting avoids the high dwm.exe GPU cost that
+// came from running a custom blur effect on every fence.
+pub const DEFAULT_BLUR_RADIUS: f32 = 20.0;
+pub const MAX_BLUR_RADIUS: f32 = 60.0;
+const EXTRA_GAUSSIAN_START_RADIUS: f32 = 20.0;
+const MAX_EXTRA_GAUSSIAN_RADIUS: f32 = 24.0;
+const OPAQUE_TINT_BLUR_CUTOFF: f32 = 0.98;
+
 pub struct D2DContext {
     pub d2d_device: ID2D1Device,
     pub d2d_factory: ID2D1Factory1,
@@ -41,7 +52,12 @@ pub struct D2DContext {
     pub surface_size: (u32, u32),
     text_format_cache: HashMap<(u16, bool), IDWriteTextFormat>,
     blur_enabled: bool,
+    blur_occluded_by_tint: bool,
     blur_radius: f32,
+    visual_dpi: u32,
+    visual_size: (u32, u32),
+    clip_size: (u32, u32),
+    clip_radius: f32,
     // Current DPI for the window this context paints into. All public
     // arguments to ensure_surface / draw_fence are logical DIPs (96-DPI
     // pixels); we multiply by `dpi/96` internally to size the physical
@@ -137,7 +153,12 @@ impl D2DContext {
                 surface_size: (0, 0),
                 text_format_cache: HashMap::new(),
                 blur_enabled: false,
-                blur_radius: 20.0,
+                blur_occluded_by_tint: false,
+                blur_radius: DEFAULT_BLUR_RADIUS,
+                visual_dpi: 0,
+                visual_size: (0, 0),
+                clip_size: (0, 0),
+                clip_radius: -1.0,
                 dpi: 96,
             })
         }
@@ -146,15 +167,18 @@ impl D2DContext {
     /// Toggle the host-backdrop blur layer. The brush is created lazily on
     /// first enable so we don't pay for it on always-transparent fences.
     pub fn set_blur_enabled(&mut self, enable: bool) -> windows::core::Result<()> {
+        if self.blur_enabled == enable {
+            return Ok(());
+        }
         self.blur_enabled = enable;
         self.rebuild_blur_brush()
     }
 
-    /// Update the gaussian standard deviation in DIPs. Range guidance:
-    /// 0 = passthrough (no extra blur on top of the host backdrop), ~20 =
-    /// default frosted glass, up to ~150 before the D2D effect clamps.
+    /// Update the user-facing blur radius in DIPs. 0..=20 stays on the plain
+    /// HostBackdropBrush. Above that, only the extra portion is sent through a
+    /// capped Gaussian blur pass.
     pub fn set_blur_radius(&mut self, radius: f32) -> windows::core::Result<()> {
-        let r = radius.clamp(0.0, 150.0);
+        let r = radius.clamp(0.0, MAX_BLUR_RADIUS);
         if (r - self.blur_radius).abs() < 0.01 {
             return Ok(());
         }
@@ -165,21 +189,43 @@ impl D2DContext {
         Ok(())
     }
 
+    /// Skip backdrop sampling when the painted tint is effectively opaque.
+    /// At that point the blur is hidden behind our own D2D fill, so leaving
+    /// the HostBackdropBrush attached only burns DWM/GPU time.
+    pub fn set_blur_tint_alpha(&mut self, alpha: f32) -> windows::core::Result<()> {
+        let occluded = alpha >= OPAQUE_TINT_BLUR_CUTOFF;
+        if self.blur_occluded_by_tint == occluded {
+            return Ok(());
+        }
+        self.blur_occluded_by_tint = occluded;
+        self.rebuild_blur_brush()
+    }
+
+    fn extra_gaussian_radius(&self) -> f32 {
+        (self.blur_radius - EXTRA_GAUSSIAN_START_RADIUS).clamp(0.0, MAX_EXTRA_GAUSSIAN_RADIUS)
+    }
+
     /// (Re)build the CompositionEffectBrush for the blur layer. With blur
     /// disabled, detaches the brush so the layer paints nothing.
     fn rebuild_blur_brush(&mut self) -> windows::core::Result<()> {
-        if !self.blur_enabled {
+        if !self.blur_enabled || self.blur_occluded_by_tint {
             let null_brush: Option<CompositionBrush> = None;
             self.blur_visual.SetBrush(null_brush.as_ref())?;
             return Ok(());
         }
         let comp = compositor();
+        let extra_radius = self.extra_gaussian_radius();
+        if extra_radius <= 0.01 {
+            let host = comp.CreateHostBackdropBrush()?;
+            self.blur_visual.SetBrush(&host)?;
+            return Ok(());
+        }
         // Custom gaussian-on-top-of-host-backdrop effect chain:
         //   GaussianBlur(σ = blur_radius) ← HostBackdropBrush (already pre-blurred wallpaper)
         // Stacking lets us push σ higher than the DWM default for a softer
         // look without losing the wallpaper sampling that only HostBackdrop
         // can provide on Win32 desktop apps.
-        let effect_desc = match GaussianBlurEffect::new(self.blur_radius) {
+        let effect_desc = match GaussianBlurEffect::new(extra_radius) {
             Ok(e) => e,
             Err(e) => {
                 eprintln!("[dg] blur: GaussianBlurEffect::new failed: {:?}", e);
@@ -300,6 +346,7 @@ impl D2DContext {
         let dpi = dpi.clamp(72, 480);
         if dpi != self.dpi {
             self.dpi = dpi;
+            self.visual_dpi = 0;
             // Force surface re-creation on next render.
             self.surface_size = (0, 0);
             self.drawing_surface = None;
@@ -336,33 +383,44 @@ impl D2DContext {
         // Composition doesn't auto-scale to the HWND's DPI. We author the
         // tree in DIPs and bake the scale onto the root visual so child
         // visuals can keep using logical coordinates.
-        let scale = self.dpi as f32 / 96.0;
-        let v3 = windows_numerics::Vector3 {
-            X: scale,
-            Y: scale,
-            Z: 1.0,
-        };
-        self.root_visual.SetScale(v3)?;
-
-        // Visuals sized in logical DIPs; root Scale converts to physical px.
         let logical_size = Vector2 {
             X: logical_w as f32,
             Y: logical_h as f32,
         };
-        self.root_visual.SetSize(logical_size)?;
-        self.blur_visual.SetSize(logical_size)?;
-        self.content_visual.SetSize(logical_size)?;
+        if self.visual_dpi != self.dpi {
+            let scale = self.dpi as f32 / 96.0;
+            let v3 = windows_numerics::Vector3 {
+                X: scale,
+                Y: scale,
+                Z: 1.0,
+            };
+            self.root_visual.SetScale(v3)?;
+            self.visual_dpi = self.dpi;
+        }
+
+        // Visuals sized in logical DIPs; root Scale converts to physical px.
+        let visual_size = (logical_w, logical_h);
+        if self.visual_size != visual_size {
+            self.root_visual.SetSize(logical_size)?;
+            self.blur_visual.SetSize(logical_size)?;
+            self.content_visual.SetSize(logical_size)?;
+            self.visual_size = visual_size;
+        }
 
         // Rounded clip on the blur layer so the backdrop respects the
         // window's corner radius. Authored in DIPs to match the visual.
-        let geom = compositor().CreateRoundedRectangleGeometry()?;
-        geom.SetSize(logical_size)?;
-        geom.SetCornerRadius(Vector2 {
-            X: radius,
-            Y: radius,
-        })?;
-        let clip = compositor().CreateGeometricClipWithGeometry(&geom)?;
-        self.blur_visual.SetClip(&clip)?;
+        if self.clip_size != visual_size || (self.clip_radius - radius).abs() > 0.01 {
+            let geom = compositor().CreateRoundedRectangleGeometry()?;
+            geom.SetSize(logical_size)?;
+            geom.SetCornerRadius(Vector2 {
+                X: radius,
+                Y: radius,
+            })?;
+            let clip = compositor().CreateGeometricClipWithGeometry(&geom)?;
+            self.blur_visual.SetClip(&clip)?;
+            self.clip_size = visual_size;
+            self.clip_radius = radius;
+        }
 
         // Drawing surface holds physical pixels so text and icons stay
         // crisp at high DPI. We pair this with `dc.SetDpi` at BeginDraw

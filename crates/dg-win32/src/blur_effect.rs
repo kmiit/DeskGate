@@ -112,8 +112,8 @@ impl IGraphicsEffectD2D1Interop_Impl for GaussianBlurEffect_Impl {
         let value = match index {
             // StandardDeviation in DIPs.
             0 => PropertyValue::CreateSingle(self.radius.get())?,
-            // Optimization = D2D1_GAUSSIANBLUR_OPTIMIZATION_BALANCED (1).
-            1 => PropertyValue::CreateUInt32(1)?,
+            // Optimization = D2D1_GAUSSIANBLUR_OPTIMIZATION_SPEED (0).
+            1 => PropertyValue::CreateUInt32(0)?,
             // BorderMode = D2D1_BORDER_MODE_HARD (1) — keeps edges crisp so
             // the wallpaper doesn't bleed outside the visual.
             2 => PropertyValue::CreateUInt32(1)?,
