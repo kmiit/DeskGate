@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "DeskGate"
-version = "0.2.0"
+version = "0.2.6"
 dependencies = [
  "dg-win32",
  "embed-manifest",
@@ -36,7 +36,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "dg-core"
-version = "0.2.0"
+version = "0.2.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -45,11 +45,11 @@ dependencies = [
 
 [[package]]
 name = "dg-locales"
-version = "0.2.0"
+version = "0.2.6"
 
 [[package]]
 name = "dg-win32"
-version = "0.2.0"
+version = "0.2.6"
 dependencies = [
  "dg-core",
  "dg-locales",
