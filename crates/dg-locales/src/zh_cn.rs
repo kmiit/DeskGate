@@ -44,6 +44,7 @@ pub fn translate(key: &'static str) -> &'static str {
         CUSTOMIZE_ICON_SPACING => "图标间距",
         CUSTOMIZE_BOLD_TITLE => "粗体标题",
         CUSTOMIZE_SHOW_LABELS => "显示标签",
+        CUSTOMIZE_TEXT_OUTLINE => "文字描边",
         CUSTOMIZE_BG_BLUR => "背景模糊",
         CUSTOMIZE_BLUR_RADIUS => "模糊半径...",
         CUSTOMIZE_BG_OPACITY => "背景不透明度",

@@ -36,7 +36,8 @@ pub const KIND_BG_OPACITY: usize = 9;
 pub const KIND_LABELS_TOGGLE: usize = 10;
 pub const KIND_TITLE_ALIGN: usize = 11;
 pub const KIND_NOTE_ALIGN: usize = 12;
-pub const KIND_COUNT: usize = 13;
+pub const KIND_TEXT_OUTLINE_TOGGLE: usize = 13;
+pub const KIND_COUNT: usize = 14;
 pub const KIND_STRIDE: usize = 64;
 
 #[inline]
@@ -153,6 +154,7 @@ pub struct CustomizeView<'a> {
     pub blur_enabled: bool,
     pub bg_opacity: f64,
     pub labels: bool,
+    pub text_outline: bool,
     pub title_align: &'a str,
     // Some(align) when the underlying fence is a Note type so the
     // alignment submenu should appear. None for shortcut fences and the
@@ -174,6 +176,7 @@ impl<'a> From<&'a Fence> for CustomizeView<'a> {
             blur_enabled: f.blur_enabled == "true",
             bg_opacity: f.bg_opacity,
             labels: f.show_item_labels == "true",
+            text_outline: f.text_outline_enabled == "true",
             title_align: &f.title_text_align,
             note_align: if f.items_type == "Note" {
                 Some(&f.note_text_align)
@@ -198,6 +201,7 @@ impl<'a> From<&'a FenceDefaults> for CustomizeView<'a> {
             blur_enabled: d.blur_enabled == "true",
             bg_opacity: d.bg_opacity,
             labels: d.show_item_labels == "true",
+            text_outline: d.text_outline_enabled == "true",
             title_align: &d.title_text_align,
             note_align: None,
         }
@@ -301,6 +305,12 @@ pub fn build_customize_menu(
             encode(id_base, KIND_LABELS_TOGGLE, 0),
             view.labels,
             loc::tw!(loc::CUSTOMIZE_SHOW_LABELS),
+        );
+        append_toggle(
+            menu,
+            encode(id_base, KIND_TEXT_OUTLINE_TOGGLE, 0),
+            view.text_outline,
+            loc::tw!(loc::CUSTOMIZE_TEXT_OUTLINE),
         );
         append_toggle(
             menu,

@@ -203,9 +203,15 @@ pub fn draw_fence(
             dc.DrawRoundedRectangle(&rounded, &border_brush, border, None);
         }
 
+        let outline_enabled = fence.text_outline_enabled == "true";
         let title_h = 28.0f32;
         let title_color = parse_text_color(&fence.title_text_color);
         let title_brush: ID2D1SolidColorBrush = dc.CreateSolidColorBrush(&title_color, None)?;
+        let title_outline_brush = if outline_enabled {
+            Some(dc.CreateSolidColorBrush(&outline_color_for(&title_color), None)?)
+        } else {
+            None
+        };
 
         let title_rect = D2D_RECT_F {
             left: 10.0 + ox,
@@ -214,13 +220,13 @@ pub fn draw_fence(
             bottom: title_h + oy,
         };
         let title: Vec<u16> = fence.title.encode_utf16().collect();
-        dc.DrawText(
+        draw_text_with_optional_outline(
+            &dc,
             &title,
             &title_format,
             &title_rect,
             &title_brush,
-            D2D1_DRAW_TEXT_OPTIONS_NONE,
-            DWRITE_MEASURING_MODE_NATURAL,
+            title_outline_brush.as_ref(),
         );
 
         // Outside an animation, the `is_rolled` flag gates whether body
@@ -232,6 +238,11 @@ pub fn draw_fence(
                 let body_color = parse_text_color(&fence.text_color);
                 let body_brush: ID2D1SolidColorBrush =
                     dc.CreateSolidColorBrush(&body_color, None)?;
+                let body_outline_brush = if outline_enabled {
+                    Some(dc.CreateSolidColorBrush(&outline_color_for(&body_color), None)?)
+                } else {
+                    None
+                };
 
                 if fence.note_mode == "todo" {
                     if let (Some((layout, rows)), Some(fmt)) =
@@ -245,6 +256,7 @@ pub fn draw_fence(
                             &dwrite,
                             fmt,
                             &body_brush,
+                            body_outline_brush.as_ref(),
                             ox,
                             oy,
                             title_h,
@@ -267,13 +279,13 @@ pub fn draw_fence(
                         bottom: h as f32 - 8.0 + oy,
                     };
                     if let Some(fmt) = &note_format {
-                        dc.DrawText(
+                        draw_text_with_optional_outline(
+                            &dc,
                             &body,
                             fmt,
                             &body_rect,
                             &body_brush,
-                            D2D1_DRAW_TEXT_OPTIONS_NONE,
-                            DWRITE_MEASURING_MODE_NATURAL,
+                            body_outline_brush.as_ref(),
                         );
                     }
                 }
@@ -290,6 +302,11 @@ pub fn draw_fence(
                 let label_color = parse_text_color(&fence.text_color);
                 let label_brush: ID2D1SolidColorBrush =
                     dc.CreateSolidColorBrush(&label_color, None)?;
+                let label_outline_brush = if outline_enabled {
+                    Some(dc.CreateSolidColorBrush(&outline_color_for(&label_color), None)?)
+                } else {
+                    None
+                };
                 let placeholder_brush: ID2D1SolidColorBrush = dc.CreateSolidColorBrush(
                     &D2D1_COLOR_F {
                         r: 0.3,
@@ -379,13 +396,13 @@ pub fn draw_fence(
                             right: ix + cell_w,
                             bottom: iy + icon_size + 16.0,
                         };
-                        dc.DrawText(
+                        draw_text_with_optional_outline(
+                            &dc,
                             &label,
                             &label_format,
                             &label_rect,
                             &label_brush,
-                            D2D1_DRAW_TEXT_OPTIONS_NONE,
-                            DWRITE_MEASURING_MODE_NATURAL,
+                            label_outline_brush.as_ref(),
                         );
                     }
                 }
@@ -431,6 +448,104 @@ pub fn draw_fence(
     Ok(())
 }
 
+fn outline_color_for(fill: &D2D1_COLOR_F) -> D2D1_COLOR_F {
+    let luminance = fill.r * 0.299 + fill.g * 0.587 + fill.b * 0.114;
+    if luminance > 0.56 {
+        D2D1_COLOR_F {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.78,
+        }
+    } else {
+        D2D1_COLOR_F {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 0.86,
+        }
+    }
+}
+
+fn draw_text_with_optional_outline(
+    dc: &ID2D1DeviceContext,
+    text: &[u16],
+    format: &IDWriteTextFormat,
+    rect: &D2D_RECT_F,
+    fill_brush: &ID2D1SolidColorBrush,
+    outline_brush: Option<&ID2D1SolidColorBrush>,
+) {
+    if let Some(outline_brush) = outline_brush {
+        for &(dx, dy) in TEXT_OUTLINE_OFFSETS {
+            let outline_rect = D2D_RECT_F {
+                left: rect.left + dx,
+                top: rect.top + dy,
+                right: rect.right + dx,
+                bottom: rect.bottom + dy,
+            };
+            unsafe {
+                dc.DrawText(
+                    text,
+                    format,
+                    &outline_rect,
+                    outline_brush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                    DWRITE_MEASURING_MODE_NATURAL,
+                );
+            }
+        }
+    }
+    unsafe {
+        dc.DrawText(
+            text,
+            format,
+            rect,
+            fill_brush,
+            D2D1_DRAW_TEXT_OPTIONS_NONE,
+            DWRITE_MEASURING_MODE_NATURAL,
+        );
+    }
+}
+
+fn draw_text_layout_with_optional_outline(
+    dc: &ID2D1DeviceContext,
+    origin: windows_numerics::Vector2,
+    layout: &IDWriteTextLayout,
+    fill_brush: &ID2D1SolidColorBrush,
+    outline_brush: Option<&ID2D1SolidColorBrush>,
+) {
+    if let Some(outline_brush) = outline_brush {
+        for &(dx, dy) in TEXT_OUTLINE_OFFSETS {
+            let outline_origin = windows_numerics::Vector2 {
+                X: origin.X + dx,
+                Y: origin.Y + dy,
+            };
+            unsafe {
+                dc.DrawTextLayout(
+                    outline_origin,
+                    layout,
+                    outline_brush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                );
+            }
+        }
+    }
+    unsafe {
+        dc.DrawTextLayout(origin, layout, fill_brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
+    }
+}
+
+const TEXT_OUTLINE_OFFSETS: &[(f32, f32)] = &[
+    (-1.0, 0.0),
+    (1.0, 0.0),
+    (0.0, -1.0),
+    (0.0, 1.0),
+    (-0.75, -0.75),
+    (0.75, -0.75),
+    (-0.75, 0.75),
+    (0.75, 0.75),
+];
+
 /// Paint the TODO-list variant of a Note fence: one row per `NoteItem`,
 /// each row a checkbox square + label text. Checked rows fill the box
 /// with the brand tint, draw a checkmark glyph, fade the label, and let
@@ -450,6 +565,7 @@ unsafe fn draw_todo_list(
     dwrite: &IDWriteFactory,
     text_format: &IDWriteTextFormat,
     body_brush: &ID2D1SolidColorBrush,
+    body_outline_brush: Option<&ID2D1SolidColorBrush>,
     ox: f32,
     oy: f32,
     title_h: f32,
@@ -470,16 +586,14 @@ unsafe fn draw_todo_list(
             right: w - layout.right_inset + ox,
             bottom: bottom + oy,
         };
-        unsafe {
-            dc.DrawText(
-                &hint_u16,
-                text_format,
-                &hint_rect,
-                body_brush,
-                D2D1_DRAW_TEXT_OPTIONS_NONE,
-                DWRITE_MEASURING_MODE_NATURAL,
-            );
-        }
+        draw_text_with_optional_outline(
+            dc,
+            &hint_u16,
+            text_format,
+            &hint_rect,
+            body_brush,
+            body_outline_brush,
+        );
         return Ok(());
     }
 
@@ -532,6 +646,13 @@ unsafe fn draw_todo_list(
     };
     let faded_brush: ID2D1SolidColorBrush =
         unsafe { dc.CreateSolidColorBrush(&faded_color, None)? };
+    let faded_outline_brush = if body_outline_brush.is_some() {
+        let mut outline = outline_color_for(&faded_color);
+        outline.a *= 0.65;
+        Some(unsafe { dc.CreateSolidColorBrush(&outline, None)? })
+    } else {
+        None
+    };
 
     for (it, geom) in fence.note_items.iter().zip(rows.iter()) {
         // Drop rows that start past the bottom of the body; rows
@@ -591,9 +712,18 @@ unsafe fn draw_todo_list(
             Y: geom.y_top + oy,
         };
         let row_brush: &ID2D1SolidColorBrush = if it.checked { &faded_brush } else { body_brush };
-        unsafe {
-            dc.DrawTextLayout(origin, &text_layout, row_brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
-        }
+        let row_outline_brush = if it.checked {
+            faded_outline_brush.as_ref().or(body_outline_brush)
+        } else {
+            body_outline_brush
+        };
+        draw_text_layout_with_optional_outline(
+            dc,
+            origin,
+            &text_layout,
+            row_brush,
+            row_outline_brush,
+        );
     }
 
     Ok(())

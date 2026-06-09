@@ -169,6 +169,9 @@ pub struct Fence {
     #[serde(default = "default_true", rename = "ShowItemLabels")]
     pub show_item_labels: String,
 
+    #[serde(default = "default_false", rename = "TextOutlineEnabled")]
+    pub text_outline_enabled: String,
+
     #[serde(default = "default_title_align", rename = "TitleTextAlign")]
     pub title_text_align: String,
 }

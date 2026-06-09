@@ -44,6 +44,7 @@ pub fn translate(key: &'static str) -> &'static str {
         CUSTOMIZE_ICON_SPACING => "Icon spacing",
         CUSTOMIZE_BOLD_TITLE => "Bold title",
         CUSTOMIZE_SHOW_LABELS => "Show item labels",
+        CUSTOMIZE_TEXT_OUTLINE => "Text outline",
         CUSTOMIZE_BG_BLUR => "Background blur",
         CUSTOMIZE_BLUR_RADIUS => "Blur radius...",
         CUSTOMIZE_BG_OPACITY => "Background opacity",

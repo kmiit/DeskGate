@@ -71,6 +71,7 @@ pub const CUSTOMIZE_ICON_SIZE: &str = "customize.icon_size";
 pub const CUSTOMIZE_ICON_SPACING: &str = "customize.icon_spacing";
 pub const CUSTOMIZE_BOLD_TITLE: &str = "customize.bold_title";
 pub const CUSTOMIZE_SHOW_LABELS: &str = "customize.show_labels";
+pub const CUSTOMIZE_TEXT_OUTLINE: &str = "customize.text_outline";
 pub const CUSTOMIZE_BG_BLUR: &str = "customize.bg_blur";
 pub const CUSTOMIZE_BLUR_RADIUS: &str = "customize.blur_radius";
 pub const CUSTOMIZE_BG_OPACITY: &str = "customize.bg_opacity";

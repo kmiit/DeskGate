@@ -1516,6 +1516,9 @@ fn apply_customize(hwnd: HWND, code: usize) {
                 KIND_LABELS_TOGGLE => {
                     f.show_item_labels = toggle_bool_str(&f.show_item_labels);
                 }
+                KIND_TEXT_OUTLINE_TOGGLE => {
+                    f.text_outline_enabled = toggle_bool_str(&f.text_outline_enabled);
+                }
                 KIND_TITLE_ALIGN => {
                     let Some(v) = decoded_title_align(value) else {
                         return;
