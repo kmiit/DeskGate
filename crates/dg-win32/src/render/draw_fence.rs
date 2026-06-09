@@ -204,7 +204,11 @@ pub fn draw_fence(
         }
 
         let outline_enabled = fence.text_outline_enabled == "true";
-        let title_h = 28.0f32;
+        let title_h = TITLE_H_DIP;
+        let title_x_pad = (10.0 + border * 0.5)
+            .max(border + 2.0)
+            .min((w as f32 * 0.5 - 1.0).max(1.0));
+        let title_top_pad = (2.0 + border * 0.5).max(border + 1.0);
         let title_color = parse_text_color(&fence.title_text_color);
         let title_brush: ID2D1SolidColorBrush = dc.CreateSolidColorBrush(&title_color, None)?;
         let title_outline_brush = if outline_enabled {
@@ -214,9 +218,9 @@ pub fn draw_fence(
         };
 
         let title_rect = D2D_RECT_F {
-            left: 10.0 + ox,
-            top: 2.0 + oy,
-            right: w as f32 - 10.0 + ox,
+            left: title_x_pad + ox,
+            top: title_top_pad + oy,
+            right: w as f32 - title_x_pad + ox,
             bottom: title_h + oy,
         };
         let title: Vec<u16> = fence.title.encode_utf16().collect();

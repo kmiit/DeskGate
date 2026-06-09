@@ -52,7 +52,6 @@ fn title_h_px(hwnd: HWND) -> i32 {
 /// (not the empty space to its right). Mirrors the geometry used in
 /// `draw_fence`, accounting for the fence's title alignment.
 fn title_text_hit(hwnd: HWND, lx_px: i32) -> bool {
-    const MARGIN_DIP: f64 = 10.0;
     const SLOP_DIP: f64 = 6.0;
 
     let dpi = window_dpi(hwnd);
@@ -70,9 +69,13 @@ fn title_text_hit(hwnd: HWND, lx_px: i32) -> bool {
             };
             let text_w = fw.d2d.measure_text_width(&title, size, bold).unwrap_or(0.0) as f64;
             let fence_w = fw.fence_data.width;
+            let border = fw.fence_data.fence_border_thickness.max(0) as f64;
+            let title_x_pad = (10.0 + border * 0.5)
+                .max(border + 2.0)
+                .min((fence_w * 0.5 - 1.0).max(1.0));
             let (text_left, text_right) = match fw.fence_data.title_text_align.as_str() {
-                "Left" => (MARGIN_DIP, MARGIN_DIP + text_w),
-                "Right" => (fence_w - MARGIN_DIP - text_w, fence_w - MARGIN_DIP),
+                "Left" => (title_x_pad, title_x_pad + text_w),
+                "Right" => (fence_w - title_x_pad - text_w, fence_w - title_x_pad),
                 _ => ((fence_w - text_w) / 2.0, (fence_w + text_w) / 2.0),
             };
             let l_px = dip_to_px(text_left - SLOP_DIP, dpi);
