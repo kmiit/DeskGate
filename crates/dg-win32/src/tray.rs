@@ -459,6 +459,9 @@ unsafe extern "system" fn tray_wndproc(
                             {
                                 s.config.fences = new_config.fences;
                                 s.config.settings = new_config.settings;
+                                if crate::storage::migrate_desktop_folders(&mut s.config.fences) {
+                                    let _ = s.config.save_fences();
+                                }
                             }
                             let fences_data = s.config.fences.clone();
                             for fence_data in &fences_data {

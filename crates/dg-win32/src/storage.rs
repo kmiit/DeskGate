@@ -2,6 +2,9 @@ use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use dg_core::fence::Fence;
+
+use windows::Win32::Storage::FileSystem::*;
 use windows::Win32::System::Com::*;
 use windows::Win32::UI::Shell::*;
 use windows::core::*;
@@ -92,6 +95,98 @@ pub fn is_inside_storage(profile_dir: &Path, path: &str) -> bool {
 /// path exists yet (e.g. paths that have already been moved).
 pub fn paths_equal(a: &str, b: &str) -> bool {
     path_key(Path::new(a)) == path_key(Path::new(b))
+}
+
+pub fn is_in_place_desktop_item(filename: &str, original_path: Option<&str>) -> bool {
+    original_path.is_some_and(|original| paths_equal(filename, original))
+}
+
+pub fn set_desktop_managed_hidden(path: &str, hidden: bool) -> io::Result<()> {
+    let path_w = wide_path(Path::new(path));
+    let attrs = unsafe { GetFileAttributesW(PCWSTR(path_w.as_ptr())) };
+    if attrs == INVALID_FILE_ATTRIBUTES {
+        return Err(io::Error::last_os_error());
+    }
+
+    let mut new_attrs = attrs;
+    if hidden {
+        new_attrs |= FILE_ATTRIBUTE_HIDDEN.0;
+        new_attrs |= FILE_ATTRIBUTE_SYSTEM.0;
+    } else {
+        new_attrs &= !FILE_ATTRIBUTE_HIDDEN.0;
+        new_attrs &= !FILE_ATTRIBUTE_SYSTEM.0;
+    }
+    if new_attrs == attrs {
+        return Ok(());
+    }
+
+    unsafe {
+        SetFileAttributesW(
+            PCWSTR(path_w.as_ptr()),
+            FILE_FLAGS_AND_ATTRIBUTES(new_attrs),
+        )
+        .map_err(|e| io::Error::other(format!("SetFileAttributesW: {e:?}")))?;
+        notify_shell_path_changed(Path::new(path), &path_w, hidden);
+    }
+    Ok(())
+}
+
+unsafe fn notify_shell_path_changed(path: &Path, path_w: &[u16], hidden: bool) {
+    let is_dir = path.is_dir();
+    let visibility_event = match (hidden, is_dir) {
+        (true, true) => SHCNE_RMDIR,
+        (true, false) => SHCNE_DELETE,
+        (false, true) => SHCNE_MKDIR,
+        (false, false) => SHCNE_CREATE,
+    };
+
+    unsafe {
+        // The desktop view can keep showing an item whose attributes just
+        // changed, especially when Explorer is configured to show hidden
+        // files. Tell the shell that the visible desktop entry itself has
+        // gone away (or returned) while leaving the real filesystem object
+        // untouched.
+        SHChangeNotify(
+            visibility_event,
+            SHCNF_PATHW | SHCNF_FLUSH,
+            Some(path_w.as_ptr() as *const _),
+            None,
+        );
+        SHChangeNotify(
+            SHCNE_ATTRIBUTES,
+            SHCNF_PATHW | SHCNF_FLUSH,
+            Some(path_w.as_ptr() as *const _),
+            None,
+        );
+        SHChangeNotify(
+            SHCNE_UPDATEITEM,
+            SHCNF_PATHW | SHCNF_FLUSH,
+            Some(path_w.as_ptr() as *const _),
+            None,
+        );
+        if let Some(parent) = path.parent() {
+            let parent_w = wide_path(parent);
+            SHChangeNotify(
+                SHCNE_UPDATEDIR,
+                SHCNF_PATHW | SHCNF_FLUSH,
+                Some(parent_w.as_ptr() as *const _),
+                None,
+            );
+        }
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST | SHCNF_FLUSH, None, None);
+    }
+}
+
+pub fn hide_desktop_item(path: &str) {
+    if let Err(e) = set_desktop_managed_hidden(path, true) {
+        eprintln!("[dg] hide desktop item failed: {}", e);
+    }
+}
+
+pub fn unhide_desktop_item(path: &str) {
+    if let Err(e) = set_desktop_managed_hidden(path, false) {
+        eprintln!("[dg] unhide desktop item failed: {}", e);
+    }
 }
 
 /// Pick a destination path inside `dest_dir` that doesn't collide with
@@ -204,6 +299,9 @@ pub fn move_into_storage(profile_dir: &Path, fence_id: &str, src: &str) -> io::R
 pub fn move_back_to_original(stored: &str, original: &str) -> io::Result<()> {
     let stored_path = Path::new(stored);
     let original_path = Path::new(original);
+    if paths_equal(stored, original) {
+        return Ok(());
+    }
     if !stored_path.exists() {
         // Nothing to move (e.g. user deleted the file from inside
         // Explorer). Treat as success — there's no work to do.
@@ -234,4 +332,45 @@ pub fn move_back_to_original(stored: &str, original: &str) -> io::Result<()> {
 pub fn try_remove_fence_storage(profile_dir: &Path, fence_id: &str) {
     let dir = items_root(profile_dir).join(fence_id);
     let _ = std::fs::remove_dir(&dir);
+}
+
+/// Move folders from older configs back to their desktop path, then hide
+/// that real desktop item while the fence represents it.
+pub fn migrate_desktop_folders(fences: &mut [Fence]) -> bool {
+    let mut changed = false;
+    for fence in fences {
+        for item in &mut fence.items {
+            let Some(original) = item.original_path.clone() else {
+                continue;
+            };
+            if !is_on_desktop(&original) {
+                continue;
+            }
+            if is_in_place_desktop_item(&item.filename, Some(&original)) {
+                if Path::new(&item.filename).is_dir() {
+                    hide_desktop_item(&item.filename);
+                    item.is_folder = true;
+                }
+                continue;
+            }
+            let current = Path::new(&item.filename);
+            if !current.is_dir() {
+                continue;
+            }
+
+            match move_back_to_original(&item.filename, &original) {
+                Ok(()) => {
+                    hide_desktop_item(&original);
+                    item.filename = original.clone();
+                    item.original_path = Some(original);
+                    item.is_folder = true;
+                    changed = true;
+                }
+                Err(e) => {
+                    eprintln!("[dg] restore desktop folder failed: {}", e);
+                }
+            }
+        }
+    }
+    changed
 }

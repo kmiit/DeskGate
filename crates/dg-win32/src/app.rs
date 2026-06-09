@@ -72,10 +72,13 @@ pub fn run() -> Box<dyn std::error::Error> {
     if let Err(e) = std::fs::create_dir_all(&profile_dir) {
         return e.into();
     }
-    let config = match AppConfig::load(&profile_dir) {
+    let mut config = match AppConfig::load(&profile_dir) {
         Ok(c) => c,
         Err(e) => return e,
     };
+    if crate::storage::migrate_desktop_folders(&mut config.fences) {
+        let _ = config.save_fences();
+    }
 
     // Initialize locale
     let lang = config.settings.language.clone().unwrap_or_else(|| {

@@ -531,11 +531,16 @@ impl IDropTarget_Impl for FenceDropTarget_Impl {
                         continue;
                     }
 
+                    let is_dropped_folder = std::path::Path::new(path).is_dir();
+
                     // Storage decision:
                     //   - cross-fence: move file into our storage,
                     //     carry inherited OriginalPath.
                     //   - desktop:    move file into our storage,
                     //     set OriginalPath = source path.
+                    //   - desktop folder: leave in place as a reference.
+                    //     Moving real folders breaks other apps that
+                    //     still expect the desktop path to exist.
                     //   - elsewhere:  leave file in place, no OriginalPath.
                     let (filename, original_path) = if in_any_storage {
                         match crate::storage::move_into_storage(&profile_dir, &fence_id, path) {
@@ -547,6 +552,11 @@ impl IDropTarget_Impl for FenceDropTarget_Impl {
                                 continue;
                             }
                         }
+                    } else if is_dropped_folder && crate::storage::is_on_desktop(path) {
+                        crate::storage::hide_desktop_item(path);
+                        (path.clone(), Some(path.clone()))
+                    } else if is_dropped_folder {
+                        (path.clone(), None)
                     } else if crate::storage::is_on_desktop(path) {
                         match crate::storage::move_into_storage(&profile_dir, &fence_id, path) {
                             Ok(new_path) => {

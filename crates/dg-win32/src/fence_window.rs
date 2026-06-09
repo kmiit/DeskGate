@@ -1,10 +1,14 @@
 use dg_core::fence::{Fence, FenceItem};
 use dg_locales as loc;
+use std::path::Path;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
 use windows::Win32::System::LibraryLoader::*;
 use windows::Win32::System::Ole::*;
+use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
+use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
@@ -717,11 +721,31 @@ unsafe extern "system" fn fence_wndproc(
                         let outside = lx < 0 || ly < 0 || lx >= crect.right || ly >= crect.bottom;
                         if outside {
                             let src_idx = fw.drag_render.as_ref().map(|d| d.src).unwrap_or(0);
-                            let src_path = fw
-                                .fence_data
-                                .items
-                                .get(src_idx)
-                                .map(|it| it.filename.clone());
+                            let src_item = fw.fence_data.items.get(src_idx).cloned();
+                            let in_place_desktop = src_item.as_ref().is_some_and(|it| {
+                                it.is_folder
+                                    && crate::storage::is_in_place_desktop_item(
+                                        &it.filename,
+                                        it.original_path.as_deref(),
+                                    )
+                            });
+                            let mut screen_pt = POINT { x: lx, y: ly };
+                            let _ = ClientToScreen(hwnd, &mut screen_pt);
+                            if in_place_desktop && is_screen_point_on_desktop_view(hwnd, screen_pt)
+                            {
+                                let items_len = fw.fence_data.items.len();
+                                let now = windows::Win32::System::SystemInformation::GetTickCount();
+                                let mut needs_render = false;
+                                if let Some(d) = fw.drag_render.as_mut() {
+                                    d.cursor_dip = cursor_dip;
+                                    d.set_target(None, items_len, now);
+                                    needs_render = d.anim_fps <= 0;
+                                }
+                                if needs_render {
+                                    let _ = fw.render();
+                                }
+                                return None;
+                            }
                             // Drop local-drag state and timer so the
                             // floating-icon paint doesn't fight OLE.
                             fw.drag_render = None;
@@ -729,7 +753,7 @@ unsafe extern "system" fn fence_wndproc(
                             let _ = KillTimer(Some(hwnd), TIMER_ID_DRAG);
                             let _ = ReleaseCapture();
                             let _ = fw.render();
-                            return src_path.map(|p| (p, src_idx));
+                            return src_item.map(|it| (it.filename, src_idx));
                         }
                         let new_target = fw.hit_test_icon(lx, ly);
                         let items_len = fw.fence_data.items.len();
@@ -791,6 +815,10 @@ unsafe extern "system" fn fence_wndproc(
 
             if let Some((path, src_idx)) = drag_out_path {
                 let result = crate::drag_source::start_drag_out(&path);
+                let mut cursor_pt = POINT::default();
+                unsafe {
+                    let _ = GetCursorPos(&mut cursor_pt);
+                }
                 // After DoDragDrop returns, reconcile fence state. The
                 // item index captured at hand-off may have shifted if
                 // somebody else mutated the items list during the modal
@@ -838,6 +866,10 @@ unsafe extern "system" fn fence_wndproc(
         WM_LBUTTONUP => {
             let lx = (lparam.0 as i32) as i16 as i32;
             let ly = ((lparam.0 as i32) >> 16) as i16 as i32;
+            let mut release_pt = POINT { x: lx, y: ly };
+            unsafe {
+                let _ = ClientToScreen(hwnd, &mut release_pt);
+            }
 
             // Resolve the press into one of three outcomes inside a single
             // borrow: confirmed drag → do the reorder right here; ambiguous
@@ -845,9 +877,10 @@ unsafe extern "system" fn fence_wndproc(
             // the clicked item so we can launch it after dropping the
             // borrow (launch_item is a free fn, can't run under with_state);
             // anything else → no-op.
-            let to_launch = unsafe {
+            let (to_launch, desktop_item_to_position) = unsafe {
                 crate::app::with_state_mut(|s| {
                     let fw = s.fences.iter_mut().find(|f| f.hwnd == hwnd)?;
+                    let mut desktop_item_to_position = None;
                     if fw.drag_render.is_some() || fw.drag_pending.is_some() {
                         let _ = ReleaseCapture();
                     }
@@ -855,6 +888,32 @@ unsafe extern "system" fn fence_wndproc(
                         let _ = KillTimer(Some(hwnd), TIMER_ID_DRAG);
                         fw.drag_pending = None;
                         let src = d.src;
+                        let mut crect = RECT::default();
+                        let _ = GetClientRect(hwnd, &mut crect);
+                        let outside = lx < 0 || ly < 0 || lx >= crect.right || ly >= crect.bottom;
+                        if outside
+                            && src < fw.fence_data.items.len()
+                            && fw.fence_data.items.get(src).is_some_and(|it| {
+                                it.is_folder
+                                    && crate::storage::is_in_place_desktop_item(
+                                        &it.filename,
+                                        it.original_path.as_deref(),
+                                    )
+                            })
+                        {
+                            let item = fw.fence_data.items.remove(src);
+                            crate::storage::unhide_desktop_item(&item.filename);
+                            desktop_item_to_position = Some(item.filename.clone());
+                            fw.d2d.icon_cache.invalidate();
+                            let _ = fw.render();
+                            let id = fw.fence_data.id.clone();
+                            let items = fw.fence_data.items.clone();
+                            if let Some(cf) = s.config.fences.iter_mut().find(|f| f.id == id) {
+                                cf.items = items;
+                            }
+                            let _ = s.config.save_fences();
+                            return Some((None, desktop_item_to_position));
+                        }
                         let dst = fw.hit_test_icon(lx, ly).unwrap_or(src);
                         if dst != src && src < fw.fence_data.items.len() {
                             let item = fw.fence_data.items.remove(src);
@@ -877,21 +936,28 @@ unsafe extern "system" fn fence_wndproc(
                             // restore the natural layout.
                             let _ = fw.render();
                         }
-                        return None;
+                        return Some((None, desktop_item_to_position));
                     }
                     if let Some((src_idx, _, _)) = fw.drag_pending.take() {
                         // Only count as a click when the release lands on
                         // the same icon the press started on — sliding off
                         // and releasing elsewhere shouldn't launch anything.
                         if fw.hit_test_icon(lx, ly) == Some(src_idx) {
-                            return fw.fence_data.items.get(src_idx).cloned();
+                            return Some((
+                                fw.fence_data.items.get(src_idx).cloned(),
+                                desktop_item_to_position,
+                            ));
                         }
                     }
-                    None
+                    Some((None, desktop_item_to_position))
                 })
                 .flatten()
+                .unwrap_or((None, None))
             };
 
+            if let Some(path) = desktop_item_to_position {
+                position_desktop_icon_at_screen_point(&path, release_pt);
+            }
             if let Some(item) = to_launch {
                 launch_item(&item);
             }
@@ -1303,7 +1369,12 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                     // original location now that the user has pulled it
                     // out of the fence. Failure leaves it in storage —
                     // better than losing the file.
-                    if let Some(orig) = removed.original_path.as_deref()
+                    if crate::storage::is_in_place_desktop_item(
+                        &removed.filename,
+                        removed.original_path.as_deref(),
+                    ) {
+                        crate::storage::unhide_desktop_item(&removed.filename);
+                    } else if let Some(orig) = removed.original_path.as_deref()
                         && let Err(e) =
                             crate::storage::move_back_to_original(&removed.filename, orig)
                     {
@@ -1383,7 +1454,12 @@ fn handle_context_menu(hwnd: HWND, lx: i32, ly: i32) {
                         // Restore any items we moved into storage so the
                         // user's files don't disappear with the fence.
                         for it in &s.fences[pos].fence_data.items {
-                            if let Some(orig) = it.original_path.as_deref()
+                            if crate::storage::is_in_place_desktop_item(
+                                &it.filename,
+                                it.original_path.as_deref(),
+                            ) {
+                                crate::storage::unhide_desktop_item(&it.filename);
+                            } else if let Some(orig) = it.original_path.as_deref()
                                 && let Err(e) =
                                     crate::storage::move_back_to_original(&it.filename, orig)
                             {
@@ -1622,6 +1698,145 @@ fn tick_drag(hwnd: HWND) {
             }
         });
     }
+}
+
+fn is_screen_point_on_desktop_view(source_hwnd: HWND, screen_pt: POINT) -> bool {
+    let mut source_rect = RECT::default();
+    unsafe {
+        if GetWindowRect(source_hwnd, &mut source_rect).is_ok()
+            && point_in_rect(&source_rect, screen_pt)
+        {
+            return false;
+        }
+    }
+
+    let Some(desktop_view) = desktop_listview_hwnd() else {
+        return false;
+    };
+    let mut desktop_rect = RECT::default();
+    unsafe {
+        GetWindowRect(desktop_view, &mut desktop_rect).is_ok()
+            && point_in_rect(&desktop_rect, screen_pt)
+    }
+}
+
+fn point_in_rect(rect: &RECT, pt: POINT) -> bool {
+    pt.x >= rect.left && pt.x < rect.right && pt.y >= rect.top && pt.y < rect.bottom
+}
+
+fn desktop_listview_hwnd() -> Option<HWND> {
+    unsafe {
+        let progman = FindWindowW(w!("Progman"), PCWSTR::null()).ok()?;
+        if let Some(list) = find_desktop_listview_under(progman) {
+            return Some(list);
+        }
+
+        let mut after = HWND::default();
+        loop {
+            let worker = FindWindowExW(None, Some(after), w!("WorkerW"), PCWSTR::null()).ok()?;
+            if let Some(list) = find_desktop_listview_under(worker) {
+                return Some(list);
+            }
+            after = worker;
+        }
+    }
+}
+
+unsafe fn find_desktop_listview_under(parent: HWND) -> Option<HWND> {
+    let defview =
+        unsafe { FindWindowExW(Some(parent), None, w!("SHELLDLL_DefView"), PCWSTR::null()).ok()? };
+    unsafe { FindWindowExW(Some(defview), None, w!("SysListView32"), PCWSTR::null()).ok() }
+}
+
+fn position_desktop_icon_at_screen_point(path: &str, mut screen_pt: POINT) {
+    let item_name = match Path::new(path).file_name().and_then(|s| s.to_str()) {
+        Some(name) if !name.is_empty() => name,
+        _ => return,
+    };
+
+    unsafe {
+        if let Err(e) = position_desktop_icon_at_screen_point_impl(item_name, &mut screen_pt) {
+            eprintln!("[dg] position desktop icon failed: {e:?}");
+        }
+    }
+}
+
+unsafe fn position_desktop_icon_at_screen_point_impl(
+    item_name: &str,
+    screen_pt: &mut POINT,
+) -> windows::core::Result<()> {
+    let shell_windows: IShellWindows =
+        unsafe { CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)? };
+    let desktop = VARIANT::from(CSIDL_DESKTOP as i32);
+    let empty = VARIANT::default();
+    let mut desktop_hwnd = 0;
+    let dispatch = unsafe {
+        shell_windows.FindWindowSW(
+            &desktop,
+            &empty,
+            SWC_DESKTOP,
+            &mut desktop_hwnd,
+            SWFO_NEEDDISPATCH,
+        )?
+    };
+    let service_provider: windows::Win32::System::Com::IServiceProvider = dispatch.cast()?;
+    let shell_browser: IShellBrowser =
+        unsafe { service_provider.QueryService(&SID_STopLevelBrowser)? };
+    let shell_view = unsafe { shell_browser.QueryActiveShellView()? };
+    let folder_view: IFolderView = shell_view.cast()?;
+    let shell_folder: IShellFolder = unsafe { folder_view.GetFolder()? };
+    let view_hwnd = unsafe { shell_view.GetWindow()? };
+    let _ = unsafe { ScreenToClient(view_hwnd, screen_pt) };
+
+    let item_name_w: Vec<u16> = item_name.encode_utf16().chain(std::iter::once(0)).collect();
+    for attempt in 0..3 {
+        let mut pidl: *mut ITEMIDLIST = std::ptr::null_mut();
+        let mut attrs = 0u32;
+        let parsed = unsafe {
+            shell_folder.ParseDisplayName(
+                HWND::default(),
+                None::<&windows::Win32::System::Com::IBindCtx>,
+                PCWSTR(item_name_w.as_ptr()),
+                None,
+                &mut pidl,
+                &mut attrs,
+            )
+        };
+        match parsed {
+            Ok(()) if !pidl.is_null() => {
+                let apidl = [pidl as *const ITEMIDLIST];
+                let result = unsafe {
+                    folder_view.SelectAndPositionItems(
+                        1,
+                        apidl.as_ptr(),
+                        Some(screen_pt as *const POINT),
+                        SVSI_POSITIONITEM.0 as u32,
+                    )
+                };
+                unsafe {
+                    ILFree(Some(pidl as *const ITEMIDLIST));
+                }
+                return result;
+            }
+            Ok(()) => {
+                return Err(Error::from_hresult(windows::core::HRESULT(
+                    0x80004003u32 as i32,
+                )));
+            }
+            Err(e) if attempt < 2 => {
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                if attempt == 1 {
+                    unsafe {
+                        shell_view.Refresh()?;
+                    }
+                }
+                let _ = e;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(())
 }
 
 /// Prompt for a new title via the modal input dialog, then write it back
